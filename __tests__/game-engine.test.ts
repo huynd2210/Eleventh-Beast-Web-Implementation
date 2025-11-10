@@ -47,6 +47,7 @@ describe('GameEngine', () => {
     gameData.investigation.secrets = Array.from({ length: 4 }).map((_, index) => ({
       id: `secret-${index}`,
       secret: `Ancient Secret ${index}`,
+      category: index % 2 === 0 ? 'ward' : 'weapon',
     }))
 
     // When

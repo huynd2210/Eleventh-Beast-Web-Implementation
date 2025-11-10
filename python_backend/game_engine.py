@@ -27,6 +27,7 @@ class Rumor:
     id: str
     location: str
     note: str
+    category: str
     verified: bool = False
     is_false: bool = False
     is_learned: bool = False
@@ -35,6 +36,7 @@ class Rumor:
 class Secret:
     id: str
     secret: str
+    category: str
 
 @dataclass
 class GameData:
@@ -99,16 +101,16 @@ LOCATION_CONNECTIONS = {
     "VIII": ["V", "VI", "VII"], # Burying Ground
 }
 
-# Rumors pool for investigation
+# Rumors pool for investigation (with categories)
 RUMORS = [
-    "The creature moves only at night...",
-    "It feeds on the sins of men...",
-    "A red cross marks its true name...",
-    "It fears running water and iron...",
-    "The beast was summoned by dark rituals...",
-    "Its screams can shatter the mind...",
-    "It leaves no trace, only destruction...",
-    "Some say it is immortal...",
+    {"note": "The creature moves only at night...", "category": "ward"},
+    {"note": "It feeds on the sins of men...", "category": "weapon"},
+    {"note": "A red cross marks its true name...", "category": "ward"},
+    {"note": "It fears running water and iron...", "category": "weapon"},
+    {"note": "The beast was summoned by dark rituals...", "category": "ward"},
+    {"note": "Its screams can shatter the mind...", "category": "weapon"},
+    {"note": "It leaves no trace, only destruction...", "category": "ward"},
+    {"note": "Some say it is immortal...", "category": "weapon"},
 ]
 
 class GameEngine:
@@ -338,19 +340,20 @@ class GameEngine:
         
         # Generate new rumor ensuring uniqueness until all rumors are used
         existing_notes = {rumor["note"] for rumor in self.game_data.investigation["rumors"]}
-        available_rumors = [note for note in RUMORS if note not in existing_notes]
+        available_rumors = [rumor for rumor in RUMORS if rumor["note"] not in existing_notes]
         selected_rumor = random.choice(available_rumors or RUMORS)
         new_rumor = Rumor(
             id=str(int(datetime.now().timestamp() * 1000)),
             location=self.game_data.player_location,
-            note=selected_rumor
+            note=selected_rumor["note"],
+            category=selected_rumor["category"]
         )
         
         # Add to investigation
         self.game_data.investigation["rumors"].append(asdict(new_rumor))
         
         self._add_to_log(
-            f"{self.game_data.inquisitor_name} investigates at {location_name} (Location {self.game_data.player_location}) and uncovers a rumor: \"{selected_rumor}\""
+            f"{self.game_data.inquisitor_name} investigates at {location_name} (Location {self.game_data.player_location}) and uncovers a rumor: \"{selected_rumor['note']}\""
         )
         
         return {
@@ -410,17 +413,23 @@ class GameEngine:
         new_secrets = []
         for rumor in updated_rumors:
             if (rumor.get("is_learned") and 
-                not any(s["secret"] == rumor["note"] for s in self.game_data.investigation["secrets"])):
-                
+                not any(s["id"] == rumor["id"] for s in self.game_data.investigation["secrets"])):
+
                 new_secret = Secret(
                     id=rumor["id"],
-                    secret=rumor["note"]
+                    secret=rumor["note"],
+                    category=rumor["category"]
                 )
                 new_secrets.append(asdict(new_secret))
+                
+                if rumor["category"] == "ward" and not any(w["id"] == rumor["id"] for w in self.game_data.wards):
+                    self.game_data.wards.append({"id": rumor["id"], "name": rumor["note"]})
+                if rumor["category"] == "weapon" and not any(w["id"] == rumor["id"] for w in self.game_data.weapons):
+                    self.game_data.weapons.append({"id": rumor["id"], "name": rumor["note"]})
         
         self.game_data.investigation["rumors"] = updated_rumors
         self.game_data.investigation["secrets"].extend(new_secrets)
-        self.game_data.knowledge += learned_count * 15
+        self.game_data.equipment_collected = len(self.game_data.wards) + len(self.game_data.weapons)
         
         self._add_to_log(
             f"{self.game_data.inquisitor_name} completes verification at All-Hallows-The-Great. {learned_count} truth(s) learned, {false_count} false rumor(s) dismissed."

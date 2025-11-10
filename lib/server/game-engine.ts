@@ -18,6 +18,13 @@ export interface Location {
   y: number
 }
 
+type RumorCategory = 'ward' | 'weapon'
+
+interface RumorDefinition {
+  text: string
+  category: RumorCategory
+}
+
 export interface Rumor {
   id: string
   location: string
@@ -25,11 +32,13 @@ export interface Rumor {
   verified: boolean
   is_false: boolean
   is_learned: boolean
+  category: RumorCategory
 }
 
 export interface Secret {
   id: string
   secret: string
+  category: RumorCategory
 }
 
 export interface GameLogEntry {
@@ -106,15 +115,15 @@ export const LOCATION_CONNECTIONS: Record<string, string[]> = {
   VIII: ['V', 'VI', 'VII'],
 }
 
-const RUMORS: string[] = [
-  'The creature moves only at night...',
-  'It feeds on the sins of men...',
-  'A red cross marks its true name...',
-  'It fears running water and iron...',
-  'The beast was summoned by dark rituals...',
-  'Its screams can shatter the mind...',
-  'It leaves no trace, only destruction...',
-  'Some say it is immortal...',
+const RUMOR_POOL: RumorDefinition[] = [
+  { text: 'The creature moves only at night...', category: 'ward' },
+  { text: 'It feeds on the sins of men...', category: 'weapon' },
+  { text: 'A red cross marks its true name...', category: 'ward' },
+  { text: 'It fears running water and iron...', category: 'weapon' },
+  { text: 'The beast was summoned by dark rituals...', category: 'ward' },
+  { text: 'Its screams can shatter the mind...', category: 'weapon' },
+  { text: 'It leaves no trace, only destruction...', category: 'ward' },
+  { text: 'Some say it is immortal...', category: 'weapon' },
 ]
 
 const ROMAN_NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII']
@@ -251,22 +260,22 @@ export class GameEngine {
     const existingNotes = new Set(
       this.gameData.investigation.rumors.map((rumor) => rumor.note),
     )
-    const availableNotes = RUMORS.filter((note) => !existingNotes.has(note))
-    const rumorPool = availableNotes.length > 0 ? availableNotes : RUMORS
-    const rumorText = this.randomChoice(rumorPool)
+    const availableRumors = RUMOR_POOL.filter((rumor) => !existingNotes.has(rumor.text))
+    const selectedRumor = this.randomChoice(availableRumors.length > 0 ? availableRumors : RUMOR_POOL)
     const newRumor: Rumor = {
       id: generateId(),
       location: this.gameData.player_location,
-      note: rumorText,
+      note: selectedRumor.text,
       verified: false,
       is_false: false,
       is_learned: false,
+      category: selectedRumor.category,
     }
 
     this.gameData.investigation.rumors.push(newRumor)
     this.gameData.investigations_completed += 1
     this.addToLog(
-      `${this.gameData.inquisitor_name} investigates at ${locationName} (Location ${this.gameData.player_location}) and uncovers a rumor: "${rumorText}"`,
+      `${this.gameData.inquisitor_name} investigates at ${locationName} (Location ${this.gameData.player_location}) and uncovers a rumor: "${selectedRumor.text}"`,
     )
 
     return this.createGameStateResponse('Investigation complete. New rumor added.')
@@ -322,25 +331,24 @@ export class GameEngine {
     }
 
     for (const rumor of this.gameData.investigation.rumors) {
-      if (rumor.is_learned && !this.gameData.investigation.secrets.some((secret) => secret.secret === rumor.note)) {
-        this.gameData.investigation.secrets.push({
+      if (rumor.is_learned && !this.gameData.investigation.secrets.some((secret) => secret.id === rumor.id)) {
+        const newSecret: Secret = {
           id: rumor.id,
           secret: rumor.note,
-        })
+          category: rumor.category,
+        }
+        this.gameData.investigation.secrets.push(newSecret)
+
+        if (rumor.category === 'ward' && !this.gameData.wards.some((ward) => ward.id === rumor.id)) {
+          this.gameData.wards.push({ id: rumor.id, name: rumor.note })
+        }
+
+        if (rumor.category === 'weapon' && !this.gameData.weapons.some((weapon) => weapon.id === rumor.id)) {
+          this.gameData.weapons.push({ id: rumor.id, name: rumor.note })
+        }
       }
     }
 
-    for (const secret of this.gameData.investigation.secrets) {
-      if (this.isWardSecret(secret.secret) && !this.gameData.wards.some((ward) => ward.id === secret.id)) {
-        this.gameData.wards.push({ id: secret.id, name: secret.secret })
-      }
-
-      if (this.isWeaponSecret(secret.secret) && !this.gameData.weapons.some((weapon) => weapon.id === secret.id)) {
-        this.gameData.weapons.push({ id: secret.id, name: secret.secret })
-      }
-    }
-
-    this.gameData.knowledge += learnedCount
     this.gameData.equipment_collected = this.gameData.wards.length + this.gameData.weapons.length
     this.addToLog(
       `${this.gameData.inquisitor_name} completes verification at All-Hallows-The-Great. ${learnedCount} truth(s) learned, ${falseCount} false rumor(s) dismissed.`,
@@ -649,16 +657,6 @@ export class GameEngine {
 
   private updateHealth(): void {
     this.gameData.health = Math.max(0, MAX_WOUNDS - this.gameData.wounds)
-  }
-
-  private isWardSecret(note: string): boolean {
-    const normalized = note.toLowerCase()
-    return normalized.includes('ward')
-  }
-
-  private isWeaponSecret(note: string): boolean {
-    const normalized = note.toLowerCase()
-    return normalized.includes('weapon') || normalized.includes('sword') || normalized.includes('iron')
   }
 
   private logRoll(sides: number, result: number, context?: string): void {

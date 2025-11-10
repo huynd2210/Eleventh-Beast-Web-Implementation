@@ -35,7 +35,8 @@ def test_given_learned_secrets_when_hunting_then_dice_match_secret_count():
     game_data.beast_location = game_data.player_location
     game_data.actions_remaining = 2
     game_data.investigation["secrets"] = [
-        {"id": f"secret-{index}", "secret": f"Ancient Secret {index}"} for index in range(4)
+        {"id": f"secret-{index}", "secret": f"Ancient Secret {index}", "category": "ward"}
+        for index in range(4)
     ]
 
     result = engine.hunt_beast()

@@ -235,8 +235,8 @@ export function GameDashboard({ gameData, setGameData, gameLog = [], setGameLog 
                   <p className="text-red-100 font-bold text-lg">{gameData.days_elapsed}</p>
                 </div>
                 <div className="bg-red-950/30 border border-red-900/50 rounded p-3 text-center">
-                  <p className="text-red-200/60 text-xs uppercase">Knowledge Gained</p>
-                  <p className="text-red-100 font-bold text-lg">{gameData.knowledge}</p>
+                  <p className="text-red-200/60 text-xs uppercase">Secrets Learned</p>
+                  <p className="text-red-100 font-bold text-lg">{gameData.investigation.secrets.length}</p>
                 </div>
                 <div className="bg-red-950/30 border border-red-900/50 rounded p-3 text-center">
                   <p className="text-red-200/60 text-xs uppercase">Items Prepared</p>
@@ -293,7 +293,7 @@ export function GameDashboard({ gameData, setGameData, gameLog = [], setGameLog 
         </div>
 
         {/* Status Bar */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-8">
           <Card className="border-amber-900/50 bg-slate-900/50 p-4">
             <div className="text-amber-200/60 text-xs uppercase tracking-widest mb-2">Health</div>
             <div className="text-2xl font-bold text-amber-100">
@@ -302,11 +302,6 @@ export function GameDashboard({ gameData, setGameData, gameLog = [], setGameLog 
             <div className="text-amber-200/40 text-xs mt-1">
               Wounds: {gameData.wounds}/{maxHealth}
             </div>
-          </Card>
-
-          <Card className="border-amber-900/50 bg-slate-900/50 p-4">
-            <div className="text-amber-200/60 text-xs uppercase tracking-widest mb-2">Knowledge</div>
-            <div className="text-2xl font-bold text-amber-100">{gameData.knowledge}</div>
           </Card>
 
           <Card className="border-amber-900/50 bg-slate-900/50 p-4">
@@ -433,8 +428,12 @@ export function GameDashboard({ gameData, setGameData, gameLog = [], setGameLog 
                     <span className="font-semibold">{gameData.investigation.secrets.length}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-amber-200/60">Knowledge Accumulated:</span>
-                    <span className="font-semibold">{gameData.knowledge}</span>
+                    <span className="text-amber-200/60">Wards Prepared:</span>
+                    <span className="font-semibold">{gameData.wards.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-amber-200/60">Weapons Prepared:</span>
+                    <span className="font-semibold">{gameData.weapons.length}</span>
                   </div>
                 </div>
               </Card>

@@ -8,7 +8,7 @@ import { GameLog } from "./game-log"
 import { LondonMap, LOCATIONS as DEFAULT_LOCATIONS, LOCATION_CONNECTIONS as DEFAULT_LOCATION_CONNECTIONS } from "./london-map"
 import { ActionsPanel } from "./actions-panel"
 import { gameAPI } from "@/lib/game-api"
-import { InquisitorProfile } from "@/types/profile"
+import type { InquisitorProfile, RunRecord } from "@/types/profile"
 
 interface GameData {
   beast_name: string
@@ -82,9 +82,41 @@ export function GameDashboard({
   const [profileStats, setProfileStats] = useState(profile?.stats ?? null)
   const outcomeRecordedRef = useRef(false)
 
+  const buildRunSummary = (result: "victory" | "defeat"): RunRecord => {
+    const makeId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+    const rumors = gameData.investigation?.rumors ?? []
+    const falseRumors = rumors.filter((rumor) => rumor?.is_false)
+    const secrets = gameData.investigation?.secrets ?? []
+
+    return {
+      id: makeId(),
+      timestamp: new Date().toISOString(),
+      result,
+      beast_name: gameData.beast_name,
+      seed: typeof gameData.seed === "number" ? gameData.seed : undefined,
+      rounds: gameData.current_round ?? 0,
+      days_elapsed: gameData.days_elapsed ?? 0,
+      rumors_total: rumors.length,
+      rumors_false: falseRumors.length,
+      rumors_verified: secrets.length,
+      verified_rumors: secrets.map((secret) => ({
+        id: secret.id ?? makeId(),
+        category: secret.category === "ward" || secret.category === "weapon" ? secret.category : undefined,
+        text: secret.secret ?? "",
+      })),
+      false_rumors: falseRumors.map((rumor) => ({
+        id: rumor.id ?? makeId(),
+        note: rumor.note ?? "",
+      })),
+    }
+  }
+
   useEffect(() => {
     setProfileStats(profile?.stats ?? null)
   }, [profile])
+
+  const currentProfileStats = profileStats ?? profile?.stats ?? null
+  const unverifiedRumorsCount = (gameData.investigation?.rumors ?? []).filter((rumor) => !rumor.verified && !rumor.is_false).length
 
   useEffect(() => {
     if (!profile) {
@@ -95,12 +127,13 @@ export function GameDashboard({
     if (gameData.game_ended) {
       if (!outcomeRecordedRef.current) {
         const result = gameData.victorious ? "victory" : "defeat"
+        const runSummary = buildRunSummary(result)
         ;(async () => {
           try {
             const response = await fetch("/api/profile", {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ profileId: profile.id, result }),
+              body: JSON.stringify({ profileId: profile.id, result, run: runSummary }),
             })
             if (response.ok) {
               const data = await response.json()
@@ -119,7 +152,7 @@ export function GameDashboard({
     } else {
       outcomeRecordedRef.current = false
     }
-  }, [gameData.game_ended, gameData.victorious, profile, onProfileUpdated])
+  }, [gameData.game_ended, gameData.victorious, gameData.current_round, gameData.days_elapsed, gameData.investigation, gameData.beast_name, gameData.seed, profile, onProfileUpdated])
 
   const handleSessionExpired = (message?: string) => {
     setError(message ?? "Game session expired. Please start a new hunt.")
@@ -278,23 +311,23 @@ export function GameDashboard({
                   Change Profile
                 </Button>
               </div>
-              {profileStats && (
+              {currentProfileStats && (
                 <div className="grid grid-cols-2 gap-3 mt-4 text-sm text-amber-200/70">
                   <div>
                     <p className="text-xs uppercase tracking-widest text-amber-200/50">Games Played</p>
-                    <p className="text-amber-100 font-semibold">{profileStats.games_played}</p>
+                    <p className="text-amber-100 font-semibold">{currentProfileStats.games_played}</p>
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-widest text-amber-200/50">Win Rate</p>
-                    <p className="text-amber-100 font-semibold">{profileStats.win_rate}%</p>
+                    <p className="text-amber-100 font-semibold">{currentProfileStats.win_rate}%</p>
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-widest text-amber-200/50">Victories</p>
-                    <p className="text-amber-100 font-semibold">{profileStats.victories}</p>
+                    <p className="text-amber-100 font-semibold">{currentProfileStats.victories}</p>
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-widest text-amber-200/50">Defeats</p>
-                    <p className="text-amber-100 font-semibold">{profileStats.defeats}</p>
+                    <p className="text-amber-100 font-semibold">{currentProfileStats.defeats}</p>
                   </div>
                 </div>
               )}
@@ -322,10 +355,6 @@ export function GameDashboard({
                   <p className="text-green-100 font-bold text-lg">{gameData.investigation.secrets.length}</p>
                 </div>
                 <div className="bg-green-950/30 border border-green-900/50 rounded p-3 text-center">
-                  <p className="text-green-200/60 text-xs uppercase">Items Collected</p>
-                  <p className="text-green-100 font-bold text-lg">{gameData.equipment_collected}</p>
-                </div>
-                <div className="bg-green-950/30 border border-green-900/50 rounded p-3 text-center">
                   <p className="text-green-200/60 text-xs uppercase">Playtime</p>
                   <p className="text-green-100 font-bold text-lg">{stats.playtime}</p>
                 </div>
@@ -350,10 +379,6 @@ export function GameDashboard({
                 <div className="bg-red-950/30 border border-red-900/50 rounded p-3 text-center">
                   <p className="text-red-200/60 text-xs uppercase">Secrets Learned</p>
                   <p className="text-red-100 font-bold text-lg">{gameData.investigation.secrets.length}</p>
-                </div>
-                <div className="bg-red-950/30 border border-red-900/50 rounded p-3 text-center">
-                  <p className="text-red-200/60 text-xs uppercase">Items Prepared</p>
-                  <p className="text-red-100 font-bold text-lg">{gameData.equipment_collected}</p>
                 </div>
                 <div className="bg-red-950/30 border border-red-900/50 rounded p-3 text-center">
                   <p className="text-red-200/60 text-xs uppercase">Playtime</p>
@@ -406,7 +431,12 @@ export function GameDashboard({
         </div>
 
         {/* Status Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <Card className="border-amber-900/50 bg-slate-900/50 p-4">
+            <div className="text-amber-200/60 text-xs uppercase tracking-widest mb-2">Unverified Rumors</div>
+            <div className="text-2xl font-bold text-amber-100">{unverifiedRumorsCount}</div>
+            <div className="text-amber-200/40 text-xs mt-1">Clues awaiting confirmation</div>
+          </Card>
           <Card className="border-amber-900/50 bg-slate-900/50 p-4">
             <div className="text-amber-200/60 text-xs uppercase tracking-widest mb-2">Health</div>
             <div className="text-2xl font-bold text-amber-100">
@@ -458,6 +488,12 @@ export function GameDashboard({
             >
               Statistics
             </TabsTrigger>
+            <TabsTrigger
+              value="profile"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-amber-600 data-[state=active]:bg-transparent"
+            >
+              Profile
+            </TabsTrigger>
           </TabsList>
 
         <TabsContent value="overview" className="mt-6 space-y-6">
@@ -483,6 +519,7 @@ export function GameDashboard({
                     onCompleteAction={completeAction}
                     actionsRemaining={gameData.actions_remaining}
                     onSessionExpired={handleSessionExpired}
+                    locations={locations}
                   />
                 )}
 
@@ -529,53 +566,150 @@ export function GameDashboard({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-amber-200/60">Verified:</span>
-                    <span className="font-semibold">
-                      {gameData.investigation.rumors.filter((r) => r.verified).length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-amber-200/60">Secrets Discovered:</span>
                     <span className="font-semibold">{gameData.investigation.secrets.length}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-amber-200/60">Wards Prepared:</span>
+                    <span className="text-amber-200/60">False Leads:</span>
+                    <span className="font-semibold">{gameData.investigation.rumors.filter((rumor) => rumor.is_false).length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-amber-200/60">Wards Collected:</span>
                     <span className="font-semibold">{gameData.wards.length}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-amber-200/60">Weapons Prepared:</span>
+                    <span className="text-amber-200/60">Weapons Collected:</span>
                     <span className="font-semibold">{gameData.weapons.length}</span>
                   </div>
                 </div>
               </Card>
             </div>
+          </TabsContent>
 
-            <Card className="border-amber-900/50 bg-slate-900/50 p-6">
-              <h3 className="text-lg font-bold text-amber-100 mb-4">Game Timeline</h3>
-              <div className="space-y-2 text-amber-100 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-amber-200/60">Started:</span>
-                  <span>
-                    {gameData.current_month} {gameData.current_day}, {gameData.current_year}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-amber-200/60">Days Elapsed:</span>
-                  <span className="font-semibold">{gameData.days_elapsed}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-amber-200/60">Beast Location:</span>
-                  <span>
-                    {gameData.beast_location
-                      ? `${locations.find((l) => l.id === gameData.beast_location)?.name} (Location ${gameData.beast_location})`
-                      : "Unknown"}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-amber-200/60">Distance:</span>
-                  <span>{gameData.beast_distance !== null ? `${gameData.beast_distance} locations` : "Unknown"}</span>
-                </div>
+          <TabsContent value="profile" className="mt-6 space-y-6">
+            {!profile ? (
+              <Card className="border-amber-900/50 bg-slate-900/40 p-6 text-amber-200/70 text-sm">
+                No inquisitor profile is active. Start a hunt to create one.
+              </Card>
+            ) : (
+              <div className="space-y-6">
+                <Card className="border-amber-900/50 bg-slate-900/50 p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-amber-100">{profile.inquisitor_name}</h3>
+                      <p className="text-amber-200/60 text-xs">Inquisitor Profile</p>
+                    </div>
+                    <div className="text-amber-200/60 text-xs">
+                      <p>Created: {new Date(profile.created_at).toLocaleString()}</p>
+                      <p>Updated: {new Date(profile.updated_at).toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="bg-slate-800/30 border border-amber-900/40 rounded p-3 text-center">
+                      <p className="text-xs uppercase tracking-widest text-amber-200/60">Games Played</p>
+                      <p className="text-amber-100 font-semibold text-xl">{currentProfileStats?.games_played ?? profile.stats.games_played}</p>
+                    </div>
+                    <div className="bg-slate-800/30 border border-amber-900/40 rounded p-3 text-center">
+                      <p className="text-xs uppercase tracking-widest text-amber-200/60">Victories</p>
+                      <p className="text-amber-100 font-semibold text-xl">{currentProfileStats?.victories ?? profile.stats.victories}</p>
+                    </div>
+                    <div className="bg-slate-800/30 border border-amber-900/40 rounded p-3 text-center">
+                      <p className="text-xs uppercase tracking-widest text-amber-200/60">Defeats</p>
+                      <p className="text-amber-100 font-semibold text-xl">{currentProfileStats?.defeats ?? profile.stats.defeats}</p>
+                    </div>
+                    <div className="bg-slate-800/30 border border-amber-900/40 rounded p-3 text-center">
+                      <p className="text-xs uppercase tracking-widest text-amber-200/60">Win Rate</p>
+                      <p className="text-amber-100 font-semibold text-xl">{currentProfileStats?.win_rate ?? profile.stats.win_rate}%</p>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="border-amber-900/50 bg-slate-900/50 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-amber-100">Run History</h3>
+                    <span className="text-amber-200/60 text-xs">{profile.runs.length} recorded hunt{profile.runs.length === 1 ? "" : "s"}</span>
+                  </div>
+
+                  {profile.runs.length === 0 ? (
+                    <p className="text-amber-200/60 text-sm">No hunts recorded yet. Defeat or slay a beast to log a run.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {profile.runs.map((run) => (
+                        <div
+                          key={run.id}
+                          className={`border rounded-lg p-4 transition-colors ${
+                            run.result === "victory" ? "border-green-900/60 bg-green-950/20" : "border-red-900/60 bg-red-950/20"
+                          }`}
+                        >
+                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div>
+                              <p className="text-sm text-amber-200/60">{new Date(run.timestamp).toLocaleString()}</p>
+                              <p className="text-amber-100 font-semibold text-lg">{run.beast_name}</p>
+                            </div>
+                            <div className="flex items-center gap-3 text-sm text-amber-200/70">
+                              <span className={`px-2 py-1 rounded text-xs font-semibold uppercase ${run.result === "victory" ? "bg-green-900/60 text-green-100" : "bg-red-900/60 text-red-100"}`}>
+                                {run.result === "victory" ? "Victory" : "Defeat"}
+                              </span>
+                              <span>Days: <span className="text-amber-100 font-semibold">{run.days_elapsed}</span></span>
+                              <span>Rounds: <span className="text-amber-100 font-semibold">{run.rounds}</span></span>
+                            </div>
+                          </div>
+
+                          <div className="grid md:grid-cols-3 gap-3 text-sm text-amber-200/70 mt-4">
+                            <div className="bg-slate-900/40 border border-amber-900/40 rounded p-3">
+                              <p className="text-xs uppercase tracking-widest">Rumors</p>
+                              <p className="text-amber-100 font-semibold">{run.rumors_total}</p>
+                            </div>
+                            <div className="bg-slate-900/40 border border-amber-900/40 rounded p-3">
+                              <p className="text-xs uppercase tracking-widest">Verified</p>
+                              <p className="text-amber-100 font-semibold">{run.rumors_verified}</p>
+                            </div>
+                            <div className="bg-slate-900/40 border border-amber-900/40 rounded p-3">
+                              <p className="text-xs uppercase tracking-widest">False Leads</p>
+                              <p className="text-amber-100 font-semibold">{run.rumors_false}</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 grid md:grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-xs uppercase tracking-widest text-amber-200/50 mb-2">Verified Rumors</p>
+                              {run.verified_rumors.length === 0 ? (
+                                <p className="text-amber-200/60 text-xs">No verified rumors recorded.</p>
+                              ) : (
+                                <ul className="space-y-2 text-sm text-amber-100">
+                                  {run.verified_rumors.map((secret) => (
+                                    <li key={secret.id} className="border border-amber-900/40 rounded p-2 bg-slate-900/40">
+                                      <p className="text-xs uppercase tracking-widest text-amber-200/50 mb-1">
+                                        {secret.category ? secret.category.toUpperCase() : "Unknown"}
+                                      </p>
+                                      <p className="leading-snug">{secret.text}</p>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-widest text-amber-200/50 mb-2">False Rumors</p>
+                              {run.false_rumors.length === 0 ? (
+                                <p className="text-amber-200/60 text-xs">No false rumors recorded.</p>
+                              ) : (
+                                <ul className="space-y-2 text-sm text-amber-100">
+                                  {run.false_rumors.map((rumor) => (
+                                    <li key={rumor.id} className="border border-red-900/40 rounded p-2 bg-red-950/20">
+                                      <p className="leading-snug">{rumor.note}</p>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
               </div>
-            </Card>
+            )}
           </TabsContent>
         </Tabs>
       </div>

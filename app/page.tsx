@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { GameSetup } from "@/components/game-setup"
 import { GameDashboard } from "@/components/game-dashboard"
-import { InquisitorProfile } from "@/types/profile"
+import type { InquisitorProfile } from "@/types/profile"
 
 export default function Home() {
   const [gameState, setGameState] = useState<{

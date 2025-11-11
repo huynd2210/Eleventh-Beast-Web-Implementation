@@ -5,13 +5,95 @@
       "id": "mhu6bnzl",
       "inquisitor_name": "John Beastslayer",
       "created_at": "2025-11-11T06:11:57.105Z",
-      "updated_at": "2025-11-11T06:14:35.063Z",
+      "updated_at": "2025-11-11T07:09:31.227Z",
       "stats": {
-        "games_played": 1,
-        "victories": 1,
+        "games_played": 3,
+        "victories": 3,
         "defeats": 0,
         "win_rate": 100
-      }
+      },
+      "runs": [
+        {
+          "id": "mhu8dp73ntk0",
+          "timestamp": "2025-11-11T07:09:31.215Z",
+          "result": "victory",
+          "beast_name": "The Bone Banshee of Sockburn",
+          "seed": 1762844863978,
+          "rounds": 14,
+          "days_elapsed": 13,
+          "rumors_total": 8,
+          "rumors_false": 0,
+          "rumors_verified": 4,
+          "verified_rumors": [
+            {
+              "id": "mhu8cudji0c1ys",
+              "category": "weapon",
+              "text": "It feeds on the sins of men..."
+            },
+            {
+              "id": "mhu8cvuoywicam",
+              "category": "ward",
+              "text": "A red cross marks its true name..."
+            },
+            {
+              "id": "mhu8d030vnzpgf",
+              "category": "ward",
+              "text": "The creature moves only at night..."
+            },
+            {
+              "id": "mhu8d16n61cun8",
+              "category": "ward",
+              "text": "The beast was summoned by dark rituals..."
+            }
+          ],
+          "false_rumors": []
+        },
+        {
+          "id": "mhu75euuwe0q",
+          "timestamp": "2025-11-11T06:35:04.950Z",
+          "result": "victory",
+          "beast_name": "The Bone Banshee of Moorgate",
+          "seed": 119926108,
+          "rounds": 11,
+          "days_elapsed": 10,
+          "rumors_total": 6,
+          "rumors_false": 0,
+          "rumors_verified": 6,
+          "verified_rumors": [
+            {
+              "id": "mhu74sj5xnz56p",
+              "category": "ward",
+              "text": "It leaves no trace, only destruction..."
+            },
+            {
+              "id": "mhu74wdh8vbk39",
+              "category": "weapon",
+              "text": "It feeds on the sins of men..."
+            },
+            {
+              "id": "mhu74yop1siuj5",
+              "category": "ward",
+              "text": "The beast was summoned by dark rituals..."
+            },
+            {
+              "id": "mhu752z2fgnkta",
+              "category": "ward",
+              "text": "The creature moves only at night..."
+            },
+            {
+              "id": "mhu7545xea98o7",
+              "category": "ward",
+              "text": "A red cross marks its true name..."
+            },
+            {
+              "id": "mhu7562l4zaonx",
+              "category": "weapon",
+              "text": "It fears running water and iron..."
+            }
+          ],
+          "false_rumors": []
+        }
+      ]
     }
   ]
 }

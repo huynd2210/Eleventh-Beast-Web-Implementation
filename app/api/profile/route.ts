@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
-import { InquisitorProfile } from '@/types/profile'
+import { InquisitorProfile, RunRecord } from '@/types/profile'
 
 interface ProfileFile {
   activeProfileId?: string
@@ -11,13 +11,60 @@ interface ProfileFile {
 const PROFILE_DIR = path.join(process.cwd(), 'data')
 const PROFILE_PATH = path.join(PROFILE_DIR, 'profile.json')
 
+function normalizeRun(raw: any, fallbackResult: 'victory' | 'defeat'): RunRecord {
+  return {
+    id: typeof raw?.id === 'string' ? raw.id : Date.now().toString(36),
+    timestamp: typeof raw?.timestamp === 'string' ? raw.timestamp : new Date().toISOString(),
+    result: raw?.result === 'defeat' ? 'defeat' : fallbackResult,
+    beast_name: typeof raw?.beast_name === 'string' ? raw.beast_name : 'Unknown Beast',
+    seed: typeof raw?.seed === 'number' ? raw.seed : undefined,
+    rounds: Number.isFinite(raw?.rounds) ? Number(raw.rounds) : 0,
+    days_elapsed: Number.isFinite(raw?.days_elapsed) ? Number(raw.days_elapsed) : 0,
+    rumors_total: Number.isFinite(raw?.rumors_total) ? Number(raw.rumors_total) : 0,
+    rumors_false: Number.isFinite(raw?.rumors_false) ? Number(raw.rumors_false) : 0,
+    rumors_verified: Number.isFinite(raw?.rumors_verified) ? Number(raw.rumors_verified) : 0,
+    verified_rumors: Array.isArray(raw?.verified_rumors)
+      ? raw.verified_rumors.map((vr: any) => ({
+          id: typeof vr?.id === 'string' ? vr.id : Date.now().toString(36),
+          category: vr?.category === 'ward' || vr?.category === 'weapon' ? vr.category : undefined,
+          text: typeof vr?.text === 'string' ? vr.text : '',
+        }))
+      : [],
+    false_rumors: Array.isArray(raw?.false_rumors)
+      ? raw.false_rumors.map((fr: any) => ({
+          id: typeof fr?.id === 'string' ? fr.id : Date.now().toString(36),
+          note: typeof fr?.note === 'string' ? fr.note : '',
+        }))
+      : [],
+  }
+}
+
+function normalizeProfile(raw: any): InquisitorProfile {
+  const stats = raw?.stats ?? {}
+  return {
+    id: typeof raw?.id === 'string' ? raw.id : Date.now().toString(36),
+    inquisitor_name: typeof raw?.inquisitor_name === 'string' ? raw.inquisitor_name : 'Unknown Inquisitor',
+    created_at: typeof raw?.created_at === 'string' ? raw.created_at : new Date().toISOString(),
+    updated_at: typeof raw?.updated_at === 'string' ? raw.updated_at : new Date().toISOString(),
+    stats: {
+      games_played: Number.isFinite(stats.games_played) ? Number(stats.games_played) : 0,
+      victories: Number.isFinite(stats.victories) ? Number(stats.victories) : 0,
+      defeats: Number.isFinite(stats.defeats) ? Number(stats.defeats) : 0,
+      win_rate: Number.isFinite(stats.win_rate) ? Number(stats.win_rate) : 0,
+    },
+    runs: Array.isArray(raw?.runs)
+      ? raw.runs.map((run: any) => normalizeRun(run, run?.result === 'defeat' ? 'defeat' : 'victory'))
+      : [],
+  }
+}
+
 async function readProfileFile(): Promise<ProfileFile> {
   try {
     const file = await fs.readFile(PROFILE_PATH, 'utf-8')
     const data = JSON.parse(file)
     return {
       activeProfileId: data.activeProfileId ?? null,
-      profiles: Array.isArray(data.profiles) ? data.profiles : [],
+      profiles: Array.isArray(data.profiles) ? data.profiles.map((profile: any) => normalizeProfile(profile)) : [],
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -57,6 +104,7 @@ function createProfile(inquisitorName: string): InquisitorProfile {
       defeats: 0,
       win_rate: 0,
     },
+    runs: [],
   }
 }
 
@@ -101,6 +149,9 @@ export async function POST(request: Request) {
       if (inquisitorName) {
         profile.inquisitor_name = inquisitorName
         profile.updated_at = new Date().toISOString()
+      }
+      if (!Array.isArray(profile.runs)) {
+        profile.runs = []
       }
     } else if (inquisitorName) {
       profile = createProfile(inquisitorName)
@@ -169,6 +220,16 @@ export async function PATCH(request: Request) {
     updateWinRate(profile)
     profile.updated_at = new Date().toISOString()
 
+    if (!Array.isArray(profile.runs)) {
+      profile.runs = []
+    }
+
+    const runPayload = body.run
+    if (runPayload && typeof runPayload === 'object') {
+      const runRecord: RunRecord = normalizeRun({ ...runPayload, result }, result)
+      profile.runs = [runRecord, ...profile.runs].slice(0, 50)
+    }
+
     await writeProfileFile(data)
 
     return NextResponse.json({
@@ -180,6 +241,46 @@ export async function PATCH(request: Request) {
   } catch (error) {
     console.error('Failed to update profile', error)
     return NextResponse.json({ success: false, message: 'Unable to update profile' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json().catch(() => ({}))
+    const profileId = typeof body.profileId === 'string' ? body.profileId.trim() : ''
+
+    if (!profileId) {
+      return NextResponse.json(
+        { success: false, message: 'profileId is required' },
+        { status: 400 },
+      )
+    }
+
+    const data = await readProfileFile()
+    const originalLength = data.profiles.length
+    data.profiles = data.profiles.filter((profile) => profile.id !== profileId)
+
+    if (data.profiles.length === originalLength) {
+      return NextResponse.json(
+        { success: false, message: 'Profile not found' },
+        { status: 404 },
+      )
+    }
+
+    if (data.activeProfileId === profileId) {
+      data.activeProfileId = data.profiles[0]?.id ?? null
+    }
+
+    await writeProfileFile(data)
+
+    return NextResponse.json({
+      success: true,
+      profiles: data.profiles,
+      activeProfileId: data.activeProfileId ?? null,
+    })
+  } catch (error) {
+    console.error('Failed to delete profile', error)
+    return NextResponse.json({ success: false, message: 'Unable to delete profile' }, { status: 500 })
   }
 }
 

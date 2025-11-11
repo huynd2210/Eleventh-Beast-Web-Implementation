@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { gameAPI } from "@/lib/game-api"
+import { LOCATIONS as DEFAULT_LOCATIONS } from "./london-map"
 
 interface ActionsPanelProps {
   gameData: any
@@ -16,6 +17,7 @@ interface ActionsPanelProps {
   actionsRemaining: number
   onCompleteAction: () => void
   onSessionExpired: (message?: string) => void
+  locations?: Array<{ id: string; name: string }>
 }
 
 export function ActionsPanel({
@@ -28,6 +30,7 @@ export function ActionsPanel({
   actionsRemaining,
   onCompleteAction,
   onSessionExpired,
+  locations,
 }: ActionsPanelProps) {
   const [selectedTab, setSelectedTab] = useState("investigate")
   const [isLoading, setIsLoading] = useState(false)
@@ -56,7 +59,9 @@ export function ActionsPanel({
     )
   }
 
-  const currentLocationName = "Current Location"
+  const locationLookup = locations && locations.length > 0 ? locations : DEFAULT_LOCATIONS
+  const currentLocationName =
+    locationLookup.find((loc) => loc.id === gameData.player_location)?.name || `Location ${gameData.player_location}`
   const isAtAllHallows = gameData.player_location === "II"
 
   const performInvestigate = async () => {
@@ -143,7 +148,7 @@ export function ActionsPanel({
     setError(null)
 
     try {
-      const response = await gameAPI.huntBeast(gameData.session_id)
+      const response: any = await gameAPI.huntBeast(gameData.session_id)
 
       if (response.success && response.game_data) {
         setGameData(response)

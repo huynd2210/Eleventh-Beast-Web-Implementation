@@ -31,3 +31,7 @@ The blueprint provisions:
 - The disk is created empty. On first run the app will generate `data/profile.json` automatically — no manual seeding required.
 
 Once the build completes, Render will expose a public URL for your deployment. Any subsequent push to the repo triggers a rebuild; you can disable auto-deploys in Render if you prefer to promote manually.
+
+### Profile storage
+
+Inquisitor profiles, run histories, and journals are saved in the browser’s `localStorage`. Each visitor gets their own private data; exporting and importing profiles continues to work entirely on the client.

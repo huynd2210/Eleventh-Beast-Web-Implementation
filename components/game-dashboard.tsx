@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { ChangeEvent, useEffect, useRef, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,13 @@ import { gameAPI } from "@/lib/game-api"
 import type { InquisitorProfile, RunRecord } from "@/types/profile"
 import { toast } from "@/hooks/use-toast"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  exportProfiles as exportProfileState,
+  getActiveProfile as getActiveProfileFromState,
+  importProfiles as importProfileState,
+  recordRunResult,
+  updateRunJournal as updateRunJournalInStore,
+} from "@/lib/profile-store"
 
 interface GameLogEntry {
   id: string
@@ -104,7 +111,7 @@ interface GameDashboardProps {
   onPlayAgain: () => void
   onChangeProfile: () => void
   profile: InquisitorProfile | null
-  onProfileUpdated: (profile: InquisitorProfile) => void
+  onProfileUpdated: (profile: InquisitorProfile | null) => void
 }
 
 export function GameDashboard({
@@ -128,6 +135,9 @@ export function GameDashboard({
   const [showRules, setShowRules] = useState(false)
   const [journalDrafts, setJournalDrafts] = useState<Record<string, string>>({})
   const [journalSaving, setJournalSaving] = useState<Record<string, boolean>>({})
+  const [isExportingProfiles, setIsExportingProfiles] = useState(false)
+  const [isImportingProfiles, setIsImportingProfiles] = useState(false)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const buildRunSummary = (result: "victory" | "defeat"): RunRecord => {
     const makeId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
@@ -192,25 +202,15 @@ export function GameDashboard({
       if (!outcomeRecordedRef.current) {
         const result = gameData.victorious ? "victory" : "defeat"
         const runSummary = buildRunSummary(result)
-        ;(async () => {
-          try {
-            const response = await fetch("/api/profile", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ profileId: profile.id, result, run: runSummary }),
-            })
-            if (response.ok) {
-              const data = await response.json()
-              if (data?.profile) {
-                const updated = data.profile as InquisitorProfile
-                onProfileUpdated(updated)
-                setProfileStats(updated.stats)
-              }
-            }
-          } catch (err) {
-            console.error("Failed to record profile outcome", err)
+        try {
+          const { profile: updatedProfile } = recordRunResult(profile.id, result, runSummary)
+          if (updatedProfile) {
+            onProfileUpdated(updatedProfile)
+            setProfileStats(updatedProfile.stats)
           }
-        })()
+        } catch (err) {
+          console.error("Failed to record profile outcome", err)
+        }
         outcomeRecordedRef.current = true
       }
     } else {
@@ -310,29 +310,85 @@ export function GameDashboard({
     setJournalSaving((prev) => ({ ...prev, [runId]: true }))
 
     try {
-      const response = await fetch('/api/profile', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ profileId: profile.id, runId, journal }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null)
-        setError(data?.message || 'Failed to save journal entry.')
-        return
-      }
-
-      const data = await response.json()
-      if (data?.profile) {
-        onProfileUpdated(data.profile)
-        setProfileStats(data.profile.stats)
+      const { profile: updatedProfile } = updateRunJournalInStore(profile.id, runId, journal)
+      if (updatedProfile) {
+        onProfileUpdated(updatedProfile)
+        setProfileStats(updatedProfile.stats)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save journal entry.')
     } finally {
       setJournalSaving((prev) => ({ ...prev, [runId]: false }))
+    }
+  }
+
+  const handleExportProfiles = async () => {
+    try {
+      setIsExportingProfiles(true)
+      const exportData = exportProfileState()
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = `eleventh-beast-profiles-${new Date().toISOString().split("T")[0]}.json`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      toast({
+        title: "Profiles exported",
+        description: "Your inquisitor records have been downloaded.",
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export profiles.")
+    } finally {
+      setIsExportingProfiles(false)
+    }
+  }
+
+  const handleImportProfiles = async (file: File) => {
+    try {
+      setIsImportingProfiles(true)
+      const text = await file.text()
+      const parsed = JSON.parse(text)
+      const state = importProfileState(parsed)
+
+      if (!state) {
+        setError("Failed to import profiles.")
+        return
+      }
+
+      if (state.profiles.length === 0) {
+        onProfileUpdated(null)
+        setProfileStats(null)
+        toast({
+          title: "Import completed",
+          description: "No profiles were found in the provided file.",
+        })
+        return
+      }
+
+      const nextActive = getActiveProfileFromState(state)
+      onProfileUpdated(nextActive ?? null)
+      setProfileStats(nextActive?.stats ?? null)
+      toast({
+        title: "Profiles imported",
+        description: `${state.profiles.length} inquisitor${state.profiles.length === 1 ? "" : "s"} restored.`,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to import profiles.")
+    } finally {
+      setIsImportingProfiles(false)
+      if (importInputRef.current) {
+        importInputRef.current.value = ""
+      }
+    }
+  }
+
+  const handleImportFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      handleImportProfiles(file)
     }
   }
 
@@ -506,31 +562,31 @@ export function GameDashboard({
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-4 md:p-8">
-        <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <div className="mb-8 space-y-2">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8 space-y-2">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div>
-                <h1 className="text-4xl md:text-5xl font-bold text-amber-100 tracking-wider">{gameData.beast_name}</h1>
-                <div className="flex flex-wrap gap-4 text-amber-200/60 text-sm">
-                  <span>Inquisitor: {gameData.inquisitor_name}</span>
-                  <span>•</span>
-                  <span>
-                    {gameData.current_month} {gameData.current_day}, {gameData.current_year}
-                  </span>
-                  <span>•</span>
-                  <span>
-                    Location: {currentLocationName} (Location {gameData.player_location})
-                  </span>
-                  <span>•</span>
-                  <span className="text-amber-300/80">
-                    Round: {gameData.current_round}
-                  </span>
-                  <span>•</span>
-                  <span className="font-mono text-amber-300/60" title="Random Seed (for debugging)">
-                    Seed: {gameData.seed}
-                  </span>
+          <h1 className="text-4xl md:text-5xl font-bold text-amber-100 tracking-wider">{gameData.beast_name}</h1>
+          <div className="flex flex-wrap gap-4 text-amber-200/60 text-sm">
+            <span>Inquisitor: {gameData.inquisitor_name}</span>
+            <span>•</span>
+            <span>
+              {gameData.current_month} {gameData.current_day}, {gameData.current_year}
+            </span>
+            <span>•</span>
+            <span>
+              Location: {currentLocationName} (Location {gameData.player_location})
+            </span>
+            <span>•</span>
+            <span className="text-amber-300/80">
+              Round: {gameData.current_round}
+            </span>
+            <span>•</span>
+            <span className="font-mono text-amber-300/60" title="Random Seed (for debugging)">
+              Seed: {gameData.seed}
+            </span>
                 </div>
               </div>
               <div className="flex items-center gap-2 self-start md:self-auto">
@@ -542,159 +598,159 @@ export function GameDashboard({
                   View Rules
                 </Button>
               </div>
-            </div>
           </div>
+        </div>
 
-          {/* Status Bar */}
+        {/* Status Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <Card className="border-amber-900/50 bg-slate-900/50 p-4">
               <div className="text-amber-200/60 text-xs uppercase tracking-widest mb-2">Unverified Rumors</div>
               <div className="text-2xl font-bold text-amber-100">{unverifiedRumorsCount}</div>
               <div className="text-amber-200/40 text-xs mt-1">Clues awaiting confirmation</div>
             </Card>
-            <Card className="border-amber-900/50 bg-slate-900/50 p-4">
-              <div className="text-amber-200/60 text-xs uppercase tracking-widest mb-2">Health</div>
+          <Card className="border-amber-900/50 bg-slate-900/50 p-4">
+            <div className="text-amber-200/60 text-xs uppercase tracking-widest mb-2">Health</div>
               <div className="text-2xl font-bold text-amber-100">
                 {gameData.health}/{maxHealth}
               </div>
               <div className="text-amber-200/40 text-xs mt-1">
                 Wounds: {gameData.wounds}/{maxHealth}
-              </div>
-            </Card>
-
-            <Card className="border-amber-900/50 bg-slate-900/50 p-4">
-              <div className="text-amber-200/60 text-xs uppercase tracking-widest mb-2">Wards</div>
-              <div className="text-2xl font-bold text-amber-100">{gameData.wards.length}</div>
-            </Card>
-
-            <Card className="border-amber-900/50 bg-slate-900/50 p-4">
-              <div className="text-amber-200/60 text-xs uppercase tracking-widest mb-2">Weapons</div>
-              <div className="text-2xl font-bold text-amber-100">{gameData.weapons.length}</div>
-            </Card>
-          </div>
-
-          {/* Error Display */}
-          {error && (
-            <div className="mb-4 p-4 bg-red-950/30 border border-red-900/50 rounded">
-              <p className="text-red-200 text-sm">{error}</p>
-              <Button
-                onClick={() => setError(null)}
-                variant="outline"
-                size="sm"
-                className="mt-2 border-red-900/50 text-red-100 hover:bg-red-900/20"
-              >
-                Dismiss
-              </Button>
             </div>
-          )}
+          </Card>
 
-          {/* Main Content */}
-          <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-            <TabsList className="w-full justify-start border-b border-amber-900/20 bg-transparent p-0 rounded-none overflow-x-auto">
-              <TabsTrigger
-                value="overview"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-amber-600 data-[state=active]:bg-transparent"
-              >
-                Overview
-              </TabsTrigger>
-              <TabsTrigger
-                value="stats"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-amber-600 data-[state=active]:bg-transparent"
-              >
-                Statistics
-              </TabsTrigger>
+          <Card className="border-amber-900/50 bg-slate-900/50 p-4">
+            <div className="text-amber-200/60 text-xs uppercase tracking-widest mb-2">Wards</div>
+            <div className="text-2xl font-bold text-amber-100">{gameData.wards.length}</div>
+          </Card>
+
+          <Card className="border-amber-900/50 bg-slate-900/50 p-4">
+            <div className="text-amber-200/60 text-xs uppercase tracking-widest mb-2">Weapons</div>
+            <div className="text-2xl font-bold text-amber-100">{gameData.weapons.length}</div>
+          </Card>
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-950/30 border border-red-900/50 rounded">
+            <p className="text-red-200 text-sm">{error}</p>
+            <Button
+              onClick={() => setError(null)}
+              variant="outline"
+              size="sm"
+              className="mt-2 border-red-900/50 text-red-100 hover:bg-red-900/20"
+            >
+              Dismiss
+            </Button>
+          </div>
+        )}
+
+        {/* Main Content */}
+        <Tabs value={selectedTab} onValueChange={setSelectedTab}>
+          <TabsList className="w-full justify-start border-b border-amber-900/20 bg-transparent p-0 rounded-none overflow-x-auto">
+            <TabsTrigger
+              value="overview"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-amber-600 data-[state=active]:bg-transparent"
+            >
+              Overview
+            </TabsTrigger>
+            <TabsTrigger
+              value="stats"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-amber-600 data-[state=active]:bg-transparent"
+            >
+              Statistics
+            </TabsTrigger>
               <TabsTrigger
                 value="profile"
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-amber-600 data-[state=active]:bg-transparent"
               >
                 Profile
-              </TabsTrigger>
-            </TabsList>
+            </TabsTrigger>
+          </TabsList>
 
             <TabsContent value="overview" className="mt-6 space-y-6">
               <div className="grid gap-6 lg:grid-cols-2">
                 <div className="space-y-6">
-                  {gameData.game_phase === "beast-approaches" && (
-                    <Card className="border-amber-900/50 bg-slate-900/50 p-6">
-                      <h2 className="text-xl font-bold text-amber-100 mb-4">I. THE BEAST APPROACHES</h2>
-                      <p className="text-amber-200/60 text-sm mb-4">
-                        The automatic phase has resolved. Check the game log for details. Moving to actions...
-                      </p>
-                    </Card>
-                  )}
+            {gameData.game_phase === "beast-approaches" && (
+              <Card className="border-amber-900/50 bg-slate-900/50 p-6">
+                <h2 className="text-xl font-bold text-amber-100 mb-4">I. THE BEAST APPROACHES</h2>
+                <p className="text-amber-200/60 text-sm mb-4">
+                  The automatic phase has resolved. Check the game log for details. Moving to actions...
+                </p>
+              </Card>
+            )}
 
                   {(gameData.game_phase === "take-actions" || gameData.game_phase === "hunt") && (
-                    <ActionsPanel
-                      gameData={gameData}
+              <ActionsPanel
+                gameData={gameData}
                       gamePhase={gameData.game_phase}
-                      setGameData={setGameData}
-                      addToLog={addToLog}
-                      onActionsComplete={handleActionsComplete}
-                      onHuntTriggered={handleHuntTriggered}
-                      onCompleteAction={completeAction}
-                      actionsRemaining={gameData.actions_remaining}
+                setGameData={setGameData}
+                addToLog={addToLog}
+                onActionsComplete={handleActionsComplete}
+                onHuntTriggered={handleHuntTriggered}
+                onCompleteAction={completeAction}
+                actionsRemaining={gameData.actions_remaining}
                       onSessionExpired={handleSessionExpired}
                       locations={locations}
                     />
                   )}
 
                   <div className="grid md:grid-cols-1 gap-4">
-                    <Card className="border-amber-900/50 bg-slate-900/50 p-4">
-                      <p className="text-amber-200/60 text-xs uppercase mb-2">Beast Distance</p>
-                      <div className="text-2xl font-bold text-amber-100">
-                        {gameData.beast_distance !== null ? gameData.beast_distance : "Unknown"}
-                      </div>
-                      <p className="text-amber-200/60 text-xs mt-1">locations away</p>
-                    </Card>
-                  </div>
+              <Card className="border-amber-900/50 bg-slate-900/50 p-4">
+                <p className="text-amber-200/60 text-xs uppercase mb-2">Beast Distance</p>
+                <div className="text-2xl font-bold text-amber-100">
+                  {gameData.beast_distance !== null ? gameData.beast_distance : "Unknown"}
                 </div>
+                <p className="text-amber-200/60 text-xs mt-1">locations away</p>
+              </Card>
+                  </div>
+            </div>
 
                 <div className="space-y-6">
-                  <LondonMap
-                    playerLocation={gameData.player_location}
-                    beastLocation={gameData.beast_location || null}
-                    rumorsTokens={gameData.rumors_tokens}
-                    onPlayerMove={movePlayer}
-                    canMove={gameData.game_phase === "take-actions"}
-                    actionsRemaining={gameData.actions_remaining}
-                    onActionUsed={completeAction}
-                    addToLog={addToLog}
-                    gameData={gameData}
-                    setGameData={setGameData}
-                    locations={locations}
-                    locationConnections={locationConnections}
-                  />
+            <LondonMap
+              playerLocation={gameData.player_location}
+              beastLocation={gameData.beast_location || null}
+              rumorsTokens={gameData.rumors_tokens}
+              onPlayerMove={movePlayer}
+              canMove={gameData.game_phase === "take-actions"}
+              actionsRemaining={gameData.actions_remaining}
+              onActionUsed={completeAction}
+              addToLog={addToLog}
+              gameData={gameData}
+              setGameData={setGameData}
+              locations={locations}
+              locationConnections={locationConnections}
+            />
                 </div>
               </div>
 
               {setGameLog && <GameLog logs={gameLog} />}
-            </TabsContent>
+          </TabsContent>
 
-            <TabsContent value="stats" className="mt-6 space-y-6">
+          <TabsContent value="stats" className="mt-6 space-y-6">
               <div className="grid md:grid-cols-1 gap-6">
-                <Card className="border-amber-900/50 bg-slate-900/50 p-6">
-                  <h3 className="text-lg font-bold text-amber-100 mb-4">Investigation Statistics</h3>
-                  <div className="space-y-3 text-amber-100 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-amber-200/60">Rumors Recorded:</span>
-                      <span className="font-semibold">{gameData.investigation.rumors.length}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-amber-200/60">Verified:</span>
-                      <span className="font-semibold">{gameData.investigation.secrets.length}</span>
-                    </div>
-                    <div className="flex justify-between">
+              <Card className="border-amber-900/50 bg-slate-900/50 p-6">
+                <h3 className="text-lg font-bold text-amber-100 mb-4">Investigation Statistics</h3>
+                <div className="space-y-3 text-amber-100 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-amber-200/60">Rumors Recorded:</span>
+                    <span className="font-semibold">{gameData.investigation.rumors.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-amber-200/60">Verified:</span>
+                    <span className="font-semibold">{gameData.investigation.secrets.length}</span>
+                  </div>
+                  <div className="flex justify-between">
                       <span className="text-amber-200/60">False Leads:</span>
                       <span className="font-semibold">{gameData.investigation.rumors.filter((rumor) => rumor.is_false).length}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-amber-200/60">Wards Collected:</span>
-                      <span className="font-semibold">{gameData.wards.length}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-amber-200/60">Weapons Collected:</span>
-                      <span className="font-semibold">{gameData.weapons.length}</span>
-                    </div>
+                </div>
+                  <div className="flex justify-between">
+                    <span className="text-amber-200/60">Wards Collected:</span>
+                    <span className="font-semibold">{gameData.wards.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-amber-200/60">Weapons Collected:</span>
+                    <span className="font-semibold">{gameData.weapons.length}</span>
+                  </div>
                   </div>
                 </Card>
               </div>
@@ -719,6 +775,27 @@ export function GameDashboard({
                       </div>
                     </div>
 
+                    <div className="flex flex-wrap gap-2 justify-end mb-6">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleExportProfiles}
+                        disabled={isExportingProfiles}
+                        className="border-amber-900/50 text-amber-100 hover:bg-amber-900/20"
+                      >
+                        {isExportingProfiles ? "Exporting..." : "Export Profiles"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => importInputRef.current?.click()}
+                        disabled={isImportingProfiles}
+                        className="border-amber-900/50 text-amber-100 hover:bg-amber-900/20"
+                      >
+                        {isImportingProfiles ? "Importing..." : "Import Profiles"}
+                      </Button>
+                    </div>
+
                     <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
                       <div className="bg-slate-800/30 border border-amber-900/40 rounded p-3 text-center">
                         <p className="text-xs uppercase tracking-widest text-amber-200/60">Games Played</p>
@@ -735,15 +812,15 @@ export function GameDashboard({
                       <div className="bg-slate-800/30 border border-amber-900/40 rounded p-3 text-center">
                         <p className="text-xs uppercase tracking-widest text-amber-200/60">Win Rate</p>
                         <p className="text-amber-100 font-semibold text-xl">{currentProfileStats?.win_rate ?? profile.stats.win_rate}%</p>
-                      </div>
-                    </div>
-                  </Card>
+                  </div>
+                </div>
+              </Card>
 
                   <Card className="border-amber-900/50 bg-slate-900/50 p-6">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-bold text-amber-100">Run History</h3>
                       <span className="text-amber-200/60 text-xs">{profile.runs.length} recorded hunt{profile.runs.length === 1 ? "" : "s"}</span>
-                    </div>
+            </div>
 
                     {profile.runs.length === 0 ? (
                       <p className="text-amber-200/60 text-sm">No hunts recorded yet. Defeat or slay a beast to log a run.</p>
@@ -764,7 +841,7 @@ export function GameDashboard({
                               <div className="flex items-center gap-3 text-sm text-amber-200/70">
                                 <span className={`px-2 py-1 rounded text-xs font-semibold uppercase ${run.result === "victory" ? "bg-green-900/60 text-green-100" : "bg-red-900/60 text-red-100"}`}>
                                   {run.result === "victory" ? "Victory" : "Defeat"}
-                                </span>
+                  </span>
                                 <span>Days: <span className="text-amber-100 font-semibold">{run.days_elapsed}</span></span>
                                 <span>Rounds: <span className="text-amber-100 font-semibold">{run.rounds}</span></span>
                               </div>
@@ -837,18 +914,26 @@ export function GameDashboard({
                                   {journalSaving[run.id] ? "Saving..." : "Save Journal"}
                                 </Button>
                               </div>
-                            </div>
-                          </div>
+                </div>
+                </div>
                         ))}
-                      </div>
+                </div>
                     )}
                   </Card>
                 </div>
               )}
-            </TabsContent>
-          </Tabs>
-        </div>
+          </TabsContent>
+        </Tabs>
       </div>
+    </div>
+
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json"
+        className="hidden"
+        onChange={handleImportFileChange}
+      />
 
       {showRules && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">

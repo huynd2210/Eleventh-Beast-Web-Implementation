@@ -1,12 +1,22 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { gameAPI } from "@/lib/game-api"
 import type { InquisitorProfile } from "@/types/profile"
+import { toast } from "@/hooks/use-toast"
+import {
+  addProfile as addProfileToStore,
+  deleteProfileById,
+  exportProfiles as exportProfileState,
+  importProfiles as importProfileState,
+  loadProfiles as loadProfileState,
+  setActiveProfile as setActiveProfileInStore,
+  updateRunJournal as updateRunJournalInStore,
+} from "@/lib/profile-store"
 
 interface GameSetupProps {
   onStartGame: (payload: { apiResponse: any; profile: InquisitorProfile }) => void
@@ -62,26 +72,15 @@ export function GameSetup({ onStartGame, initialStep, forceProfileChange = false
   const [isChangingProfile, setIsChangingProfile] = useState(forceProfileChange)
   const [journalDrafts, setJournalDrafts] = useState<Record<string, string>>({})
   const [journalSaving, setJournalSaving] = useState<Record<string, boolean>>({})
+  const [isExportingProfiles, setIsExportingProfiles] = useState(false)
+  const [isImportingProfiles, setIsImportingProfiles] = useState(false)
 
   const initialisedRef = useRef(false)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     initialisedRef.current = false
   }, [initialStep, forceProfileChange])
-
-  const updateProfilesState = (data: { profiles?: InquisitorProfile[]; activeProfileId?: string | null; profile?: InquisitorProfile | null }) => {
-    if (Array.isArray(data.profiles)) {
-      setProfiles(data.profiles)
-    }
-    if (typeof data.activeProfileId === "string" || data.activeProfileId === null) {
-      setActiveProfileId(data.activeProfileId)
-    }
-    if (data.profile) {
-      setSelectedProfileId(data.profile.id)
-      setInquisitorName(data.profile.inquisitor_name)
-      setInspectedProfileId((prev) => prev ?? data.profile.id)
-    }
-  }
 
   useEffect(() => {
     if (profiles.length === 0) {
@@ -112,20 +111,18 @@ export function GameSetup({ onStartGame, initialStep, forceProfileChange = false
   }, [inspectedProfile])
 
   useEffect(() => {
-    const loadProfiles = async () => {
-      try {
-        const response = await fetch("/api/profile")
-        if (!response.ok) return
-        const data = await response.json()
-        updateProfilesState(data)
-      } catch (err) {
-        console.error("Failed to load profiles:", err)
-      } finally {
-        setProfileLoading(false)
+    const state = loadProfileState()
+    setProfiles(state.profiles)
+    setActiveProfileId(state.activeProfileId)
+    if (state.activeProfileId) {
+      const active = state.profiles.find((profile) => profile.id === state.activeProfileId)
+      if (active) {
+        setSelectedProfileId(active.id)
+        setInquisitorName(active.inquisitor_name)
+        setInspectedProfileId((prev) => prev ?? active.id)
       }
     }
-
-    loadProfiles()
+    setProfileLoading(false)
   }, [])
 
   useEffect(() => {
@@ -222,97 +219,120 @@ export function GameSetup({ onStartGame, initialStep, forceProfileChange = false
     }
   }
 
-  const setActiveProfile = async (profileId: string) => {
-    try {
-      const response = await fetch("/api/profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ profileId, setActive: true }),
-      })
-
-      if (!response.ok) {
-        console.error("Failed to update active profile")
-        return null
-      }
-
-      const data = await response.json()
-      updateProfilesState(data)
-      return data.profile as InquisitorProfile
-    } catch (err) {
-      console.error("Failed to update active profile", err)
-      return null
+  const setActiveProfile = (profileId: string) => {
+    const { state, profile } = setActiveProfileInStore(profileId)
+    setProfiles(state.profiles)
+    setActiveProfileId(state.activeProfileId)
+    if (profile) {
+      setSelectedProfileId(profile.id)
+      setInquisitorName(profile.inquisitor_name)
     }
+    return profile
   }
 
-  const createProfile = async (name: string) => {
-    try {
-      const response = await fetch("/api/profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ inquisitor_name: name, setActive: true }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null)
-        setError(data?.message || "Failed to create profile")
-        return null
-      }
-
-      const data = await response.json()
-      updateProfilesState(data)
-      return data.profile as InquisitorProfile
-    } catch (err) {
-      console.error("Failed to create profile", err)
-      setError("Failed to create profile")
-      return null
-    }
+  const createProfile = (name: string) => {
+    const { state, profile } = addProfileToStore(name)
+    setProfiles(state.profiles)
+    setActiveProfileId(state.activeProfileId)
+    setSelectedProfileId(profile.id)
+    setInspectedProfileId(profile.id)
+    setInquisitorName(profile.inquisitor_name)
+    return profile
   }
 
-  const deleteProfile = async (profile: InquisitorProfile) => {
-    try {
-      const response = await fetch("/api/profile", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ profileId: profile.id }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null)
-        setError(data?.message || "Failed to delete profile")
-        return false
-      }
-
-      const data = await response.json()
-      updateProfilesState(data)
-      setProfileToDelete(null)
-      const updatedProfiles = Array.isArray(data.profiles) ? data.profiles : []
-      if (data.activeProfileId) {
-        setSelectedProfileId(data.activeProfileId)
-        const activeProfile = updatedProfiles.find((item) => item.id === data.activeProfileId)
-        if (activeProfile) {
-          setInquisitorName(activeProfile.inquisitor_name)
-        }
-      } else {
-        setSelectedProfileId(null)
-        setInquisitorName("")
-      }
-      setInspectedProfileId((prev) => {
-        if (prev && prev !== profile.id && updatedProfiles.some((item) => item.id === prev)) {
-          return prev
-        }
-        return updatedProfiles[0]?.id ?? null
-      })
-      return true
-    } catch (err) {
-      console.error("Failed to delete profile", err)
+  const deleteProfile = (profile: InquisitorProfile) => {
+    const { state, removed } = deleteProfileById(profile.id)
+    if (!removed) {
       setError("Failed to delete profile")
       return false
+    }
+
+    setProfiles(state.profiles)
+    setActiveProfileId(state.activeProfileId)
+    const activeProfile =
+      state.activeProfileId != null
+        ? state.profiles.find((item) => item.id === state.activeProfileId) ?? null
+        : state.profiles[0] ?? null
+
+    setSelectedProfileId(activeProfile?.id ?? null)
+    setInquisitorName(activeProfile?.inquisitor_name ?? "")
+    setInspectedProfileId((prev) => {
+      if (prev && state.profiles.some((item) => item.id === prev)) {
+        return prev
+      }
+      return activeProfile?.id ?? state.profiles[0]?.id ?? null
+    })
+    setProfileToDelete(null)
+    return true
+  }
+
+  const handleExportProfiles = async () => {
+    try {
+      setIsExportingProfiles(true)
+      const exportData = exportProfileState()
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = `eleventh-beast-profiles-${new Date().toISOString().split("T")[0]}.json`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      toast({
+        title: "Profiles exported",
+        description: "Download complete.",
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export profiles")
+    } finally {
+      setIsExportingProfiles(false)
+    }
+  }
+
+  const handleImportProfiles = async (file: File) => {
+    try {
+      setIsImportingProfiles(true)
+      const text = await file.text()
+      const parsed = JSON.parse(text)
+      const state = importProfileState(parsed)
+      if (!state) {
+        setError("Failed to import profiles")
+        return
+      }
+      setProfiles(state.profiles)
+      setActiveProfileId(state.activeProfileId)
+
+      if (state.profiles.length === 0) {
+        setSelectedProfileId(null)
+        setInspectedProfileId(null)
+        setInquisitorName("")
+        toast({
+          title: "Import completed",
+          description: "No profiles were found in the file.",
+        })
+        return
+      }
+
+      const nextActive =
+        state.activeProfileId != null
+          ? state.profiles.find((profile) => profile.id === state.activeProfileId) ?? state.profiles[0]
+          : state.profiles[0]
+
+      setSelectedProfileId(nextActive?.id ?? null)
+      setInspectedProfileId(nextActive?.id ?? null)
+      setInquisitorName(nextActive?.inquisitor_name ?? "")
+      toast({
+        title: "Profiles imported",
+        description: `${state.profiles.length} inquisitor${state.profiles.length === 1 ? "" : "s"} restored.`,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to import profiles")
+    } finally {
+      setIsImportingProfiles(false)
+      if (importInputRef.current) {
+        importInputRef.current.value = ""
+      }
     }
   }
 
@@ -329,26 +349,20 @@ export function GameSetup({ onStartGame, initialStep, forceProfileChange = false
     setJournalSaving((prev) => ({ ...prev, [runId]: true }))
 
     try {
-      const response = await fetch("/api/profile", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ profileId: inspectedProfile.id, runId, journal }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null)
-        setError(data?.message || "Failed to save journal entry.")
-        return
-      }
-
-      const data = await response.json()
-      updateProfilesState(data)
+      const { state } = updateRunJournalInStore(inspectedProfile.id, runId, journal)
+      setProfiles(state.profiles)
+      setActiveProfileId(state.activeProfileId)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save journal entry.")
     } finally {
       setJournalSaving((prev) => ({ ...prev, [runId]: false }))
+    }
+  }
+
+  const handleImportFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      handleImportProfiles(file)
     }
   }
 
@@ -359,13 +373,16 @@ export function GameSetup({ onStartGame, initialStep, forceProfileChange = false
     setStep("intro")
   }
 
-  const handleSelectProfile = async (profile: InquisitorProfile, autoAdvance = true) => {
+  const handleSelectProfile = (profile: InquisitorProfile, autoAdvance = true) => {
     setSelectedProfileId(profile.id)
     setInquisitorName(profile.inquisitor_name)
     setIsChangingProfile(false)
 
     if (profile.id !== activeProfileId) {
-      await setActiveProfile(profile.id)
+      const updated = setActiveProfile(profile.id)
+      if (updated) {
+        profile = updated
+      }
     }
 
     if (autoAdvance) {
@@ -400,13 +417,13 @@ export function GameSetup({ onStartGame, initialStep, forceProfileChange = false
 
     try {
       if (!profileToUse || isChangingProfile) {
-        profileToUse = await createProfile(trimmedInquisitorName)
+        profileToUse = createProfile(trimmedInquisitorName)
         if (!profileToUse) {
           return
         }
         setIsChangingProfile(false)
       } else {
-        const updated = await setActiveProfile(profileToUse.id)
+        const updated = setActiveProfile(profileToUse.id)
         if (updated) {
           profileToUse = updated
         }
@@ -683,6 +700,27 @@ export function GameSetup({ onStartGame, initialStep, forceProfileChange = false
                           </div>
                         </div>
 
+                        <div className="flex flex-wrap gap-2 justify-end">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleExportProfiles}
+                            disabled={isExportingProfiles}
+                            className="border-amber-900/50 text-amber-100 hover:bg-amber-900/20"
+                          >
+                            {isExportingProfiles ? "Exporting..." : "Export Profiles"}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => importInputRef.current?.click()}
+                            disabled={isImportingProfiles}
+                            className="border-amber-900/50 text-amber-100 hover:bg-amber-900/20"
+                          >
+                            {isImportingProfiles ? "Importing..." : "Import Profiles"}
+                          </Button>
+                        </div>
+
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
                             <h4 className="text-sm font-semibold text-amber-100 uppercase tracking-widest">Run History</h4>
@@ -844,10 +882,10 @@ export function GameSetup({ onStartGame, initialStep, forceProfileChange = false
                   <Button
                     variant="destructive"
                     disabled={isLoading}
-                    onClick={async () => {
+                    onClick={() => {
                       if (profileToDelete) {
                         setIsLoading(true)
-                        await deleteProfile(profileToDelete)
+                        deleteProfile(profileToDelete)
                         setIsLoading(false)
                       }
                     }}
@@ -1015,6 +1053,14 @@ export function GameSetup({ onStartGame, initialStep, forceProfileChange = false
           )}
         </div>
       </Card>
+
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json"
+        className="hidden"
+        onChange={handleImportFileChange}
+      />
     </div>
   )
 }

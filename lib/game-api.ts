@@ -40,8 +40,16 @@ export interface GameData {
   beast_location?: string
   beast_distance?: number
   investigation: {
-    rumors: Array<{ id: string; location: string; note: string; verified: boolean }>
-    secrets: Array<{ id: string; secret: string }>
+    rumors: Array<{
+      id: string
+      location: string
+      note: string
+      verified: boolean
+      category: string
+      is_false?: boolean
+      is_learned?: boolean
+    }>
+    secrets: Array<{ id: string; secret: string; category?: string }>
     notes: Array<{ id: string; note: string }>
   }
   wards: Array<{ id: string; name: string }>

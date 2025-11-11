@@ -5,14 +5,110 @@
       "id": "mhu6bnzl",
       "inquisitor_name": "John Beastslayer",
       "created_at": "2025-11-11T06:11:57.105Z",
-      "updated_at": "2025-11-11T07:09:31.227Z",
+      "updated_at": "2025-11-11T09:05:31.093Z",
       "stats": {
-        "games_played": 3,
-        "victories": 3,
+        "games_played": 5,
+        "victories": 5,
         "defeats": 0,
         "win_rate": 100
       },
       "runs": [
+        {
+          "id": "mhucivgvrzkv",
+          "timestamp": "2025-11-11T09:05:31.087Z",
+          "result": "victory",
+          "beast_name": "The Grave Wolf of Moorgate",
+          "seed": 1762851879269,
+          "rounds": 14,
+          "days_elapsed": 13,
+          "rumors_total": 9,
+          "rumors_false": 2,
+          "rumors_verified": 7,
+          "verified_rumors": [
+            {
+              "id": "mhuchu4bnuf7wo",
+              "category": "weapon",
+              "text": "Thomas Milward (Found an artifact) describes an artifact that implies: The Beast's behavior: Hidden."
+            },
+            {
+              "id": "mhuchvpmkohmpv",
+              "category": "weapon",
+              "text": "William Clarke (Witnessed it) claims to have witnessed the Beast and shares: The Beast's behavior: Invisible."
+            },
+            {
+              "id": "mhuchxqpveaojk",
+              "category": "weapon",
+              "text": "Isolde Clarke (Had a dream) describes a chilling dream: Weapon or tactic against the Beast: Cold iron."
+            },
+            {
+              "id": "mhuci0utwskim4",
+              "category": "weapon",
+              "text": "Thomas Aldworth (Witnessed it) claims to have witnessed the Beast and shares: Weapon or tactic against the Beast: Bludgeoning."
+            },
+            {
+              "id": "mhuci2qo0j6ofe",
+              "category": "ward",
+              "text": "Thomas Clarke (Heard rumor) whispers that: The Beast's appearance: Long hands with sharp claws."
+            },
+            {
+              "id": "mhuci4kojase7w",
+              "category": "weapon",
+              "text": "Isolde Aldworth (Found an artifact) describes an artifact that implies: Weapon or tactic against the Beast: Fire."
+            },
+            {
+              "id": "mhuci86x9yd13f",
+              "category": "weapon",
+              "text": "Bartholomew Milward (Witnessed it) claims to have witnessed the Beast and shares: Weapon or tactic against the Beast: Bludgeoning."
+            }
+          ],
+          "false_rumors": [
+            {
+              "id": "mhuci6nkqid4kj",
+              "note": "Catherine Aldworth (Had a dream) describes a chilling dream: The Beast's behavior: Stalking."
+            },
+            {
+              "id": "mhucihncdjcijr",
+              "note": "William Aldworth (Found an artifact) describes an artifact that implies: Ward against the Beast: String of acorns."
+            }
+          ]
+        },
+        {
+          "id": "mhubmkbffame",
+          "timestamp": "2025-11-11T08:40:23.643Z",
+          "result": "victory",
+          "beast_name": "The Marsh Wolf of Whitechapel",
+          "seed": 1762850323897,
+          "rounds": 9,
+          "days_elapsed": 8,
+          "rumors_total": 5,
+          "rumors_false": 2,
+          "rumors_verified": 3,
+          "verified_rumors": [
+            {
+              "id": "mhubkkpzehelt3",
+              "text": "Isolde Clarke (Read in a book) recites from an old tome: The Beast's behavior: Hidden."
+            },
+            {
+              "id": "mhublubsugdpsf",
+              "category": "weapon",
+              "text": "William Gibbes (Witnessed it) claims to have witnessed the Beast and shares: Weapon or tactic against the Beast: Snare trap."
+            },
+            {
+              "id": "mhublwlbm2ugoi",
+              "text": "Agnes Milward (Heard rumor) whispers that: The Beast's behavior: Stalking."
+            }
+          ],
+          "false_rumors": [
+            {
+              "id": "mhubkj85peeg72",
+              "note": "Isolde Aldworth (Witnessed it) claims to have witnessed the Beast and shares: Ward against the Beast: Relic of a saint."
+            },
+            {
+              "id": "mhublncqpowsfk",
+              "note": "Bartholomew Huxham (Heard rumor) whispers that: Weapon or tactic against the Beast: Loud clanging."
+            }
+          ]
+        },
         {
           "id": "mhu8dp73ntk0",
           "timestamp": "2025-11-11T07:09:31.215Z",

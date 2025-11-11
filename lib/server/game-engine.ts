@@ -20,11 +20,6 @@ export interface Location {
 
 type RumorCategory = 'ward' | 'weapon'
 
-interface RumorDefinition {
-  text: string
-  category: RumorCategory
-}
-
 export interface Rumor {
   id: string
   location: string
@@ -115,16 +110,107 @@ export const LOCATION_CONNECTIONS: Record<string, string[]> = {
   VIII: ['V', 'VII'],
 }
 
-const RUMOR_POOL: RumorDefinition[] = [
-  { text: 'The creature moves only at night...', category: 'ward' },
-  { text: 'It feeds on the sins of men...', category: 'weapon' },
-  { text: 'A red cross marks its true name...', category: 'ward' },
-  { text: 'It fears running water and iron...', category: 'weapon' },
-  { text: 'The beast was summoned by dark rituals...', category: 'ward' },
-  { text: 'Its screams can shatter the mind...', category: 'weapon' },
-  { text: 'It leaves no trace, only destruction...', category: 'ward' },
-  { text: 'Some say it is immortal...', category: 'weapon' },
+const CARD_VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'] as const
+type CardValue = typeof CARD_VALUES[number]
+
+type SuitKey = 'hearts' | 'diamonds' | 'spades' | 'clubs'
+
+const FIRST_NAMES = ['Agnes', 'Bartholomew', 'Catherine', 'William', 'Thomas', 'Isolde']
+const SURNAMES = ['Aldworth', 'Bentham', 'Clarke', 'Gibbes', 'Milward', 'Huxham']
+
+const RUMOR_METHODS: Array<{ label: string; phrase: string }> = [
+  { label: 'Witnessed it', phrase: 'claims to have witnessed the Beast and shares:' },
+  { label: 'Mysterious note', phrase: 'reveals a mysterious note that reads:' },
+  { label: 'Read in a book', phrase: 'recites from an old tome:' },
+  { label: 'Found an artifact', phrase: 'describes an artifact that implies:' },
+  { label: 'Heard rumor', phrase: 'whispers that:' },
+  { label: 'Had a dream', phrase: 'describes a chilling dream:' },
 ]
+
+interface SuitDetailConfig {
+  category: RumorCategory
+  formatter: (detail: string) => string
+  details: Record<CardValue, string>
+}
+
+const SUIT_DETAILS: Record<SuitKey, SuitDetailConfig> = {
+  hearts: {
+    category: 'ward',
+    formatter: (detail) => `The Beast's appearance: ${detail}.`,
+    details: {
+      '2': 'Large, sparkling eyes',
+      '3': 'Body covered in thick fur',
+      '4': 'Grunting pig snout',
+      '5': 'Foul odor of rotting fish',
+      '6': 'Head like a goat',
+      '7': 'Massive antlers of a stag',
+      '8': 'Runs on all fours like a dog',
+      '9': 'Powerful, barbed tail',
+      '10': 'Giant bat wings',
+      J: 'Long hands with sharp claws',
+      Q: 'Tendrils that whip and lash',
+      K: "Jaws larger than a lion's",
+      A: 'Feet with talons like an eagle',
+    },
+  },
+  diamonds: {
+    category: 'weapon',
+    formatter: (detail) => `The Beast's behavior: ${detail}.`,
+    details: {
+      '2': 'Stealthy',
+      '3': 'Blasphemous',
+      '4': 'Lycanthropic',
+      '5': 'Erratic',
+      '6': 'Howling',
+      '7': 'Nocturnal',
+      '8': 'Vicious',
+      '9': 'Furtive',
+      '10': 'Shapeshifting',
+      J: 'Predatory',
+      Q: 'Stalking',
+      K: 'Hidden',
+      A: 'Invisible',
+    },
+  },
+  spades: {
+    category: 'ward',
+    formatter: (detail) => `Ward against the Beast: ${detail}.`,
+    details: {
+      '2': 'Rosemary & sage',
+      '3': 'Silver mirror',
+      '4': 'Bell made of lead',
+      '5': 'Black salt',
+      '6': 'String of acorns',
+      '7': 'Running water',
+      '8': 'Iron horseshoe',
+      '9': 'Golden amulet',
+      '10': "Criminal's hand",
+      J: 'Wolf bones',
+      Q: 'Chalked circle',
+      K: 'Glass witch ball',
+      A: 'Relic of a saint',
+    },
+  },
+  clubs: {
+    category: 'weapon',
+    formatter: (detail) => `Weapon or tactic against the Beast: ${detail}.`,
+    details: {
+      '2': 'Bladed',
+      '3': 'Cold iron',
+      '4': 'Lead shot',
+      '5': 'Piercing',
+      '6': 'View with mirror',
+      '7': 'Rowan tree wood',
+      '8': 'Douse with water',
+      '9': 'Fire',
+      '10': 'Bludgeoning',
+      J: 'Snare trap',
+      Q: 'Direct sunlight',
+      K: 'Ancient sword',
+      A: 'Loud clanging',
+    },
+  },
+}
 
 const ROMAN_NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII']
 
@@ -189,6 +275,42 @@ export class GameEngine {
     }
 
     this.updateHealth()
+  }
+
+  private generateRumor(existingNotes: Set<string>): Rumor {
+    const suitKeys: SuitKey[] = ['hearts', 'diamonds', 'spades', 'clubs']
+    let attempts = 0
+    let note = ''
+    let category: RumorCategory = 'appearance'
+
+    while (attempts < 10) {
+      const firstName = this.randomChoice(FIRST_NAMES)
+      const surname = this.randomChoice(SURNAMES)
+      const method = this.randomChoice(RUMOR_METHODS)
+      const suit = this.randomChoice(suitKeys)
+      const cardValue = this.randomChoice(CARD_VALUES as unknown as CardValue[])
+      const suitConfig = SUIT_DETAILS[suit]
+      const detail = suitConfig.details[cardValue] ?? suitConfig.details['2']
+      const detailSentence = suitConfig.formatter(detail)
+
+      note = `${firstName} ${surname} (${method.label}) ${method.phrase} ${detailSentence}`
+      category = suitConfig.category
+
+      if (!existingNotes.has(note)) {
+        break
+      }
+      attempts += 1
+    }
+
+    return {
+      id: generateId(),
+      location: this.gameData.player_location,
+      note,
+      verified: false,
+      is_false: false,
+      is_learned: false,
+      category,
+    }
   }
 
   createGameStateResponse(message: string): GameResponse {
@@ -256,25 +378,13 @@ export class GameEngine {
     delete this.gameData.rumors_tokens[this.gameData.player_location]
     const locationName = this.findLocationName(this.gameData.player_location)
 
-    const existingNotes = new Set(
-      this.gameData.investigation.rumors.map((rumor) => rumor.note),
-    )
-    const availableRumors = RUMOR_POOL.filter((rumor) => !existingNotes.has(rumor.text))
-    const selectedRumor = this.randomChoice(availableRumors.length > 0 ? availableRumors : RUMOR_POOL)
-    const newRumor: Rumor = {
-      id: generateId(),
-      location: this.gameData.player_location,
-      note: selectedRumor.text,
-      verified: false,
-      is_false: false,
-      is_learned: false,
-      category: selectedRumor.category,
-    }
+    const existingNotes = new Set(this.gameData.investigation.rumors.map((rumor) => rumor.note))
+    const newRumor = this.generateRumor(existingNotes)
 
     this.gameData.investigation.rumors.push(newRumor)
     this.gameData.investigations_completed += 1
     this.addToLog(
-      `${this.gameData.inquisitor_name} investigates at ${locationName} (Location ${this.gameData.player_location}) and uncovers a rumor: "${selectedRumor.text}"`,
+      `${this.gameData.inquisitor_name} investigates at ${locationName} (Location ${this.gameData.player_location}) and uncovers a rumor: "${newRumor.note}"`,
     )
 
     return this.createGameStateResponse('Investigation complete. New rumor added.')

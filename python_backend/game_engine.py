@@ -101,17 +101,98 @@ LOCATION_CONNECTIONS = {
     "VIII": ["V", "VII"],
 }
 
-# Rumors pool for investigation (with categories)
-RUMORS = [
-    {"note": "The creature moves only at night...", "category": "ward"},
-    {"note": "It feeds on the sins of men...", "category": "weapon"},
-    {"note": "A red cross marks its true name...", "category": "ward"},
-    {"note": "It fears running water and iron...", "category": "weapon"},
-    {"note": "The beast was summoned by dark rituals...", "category": "ward"},
-    {"note": "Its screams can shatter the mind...", "category": "weapon"},
-    {"note": "It leaves no trace, only destruction...", "category": "ward"},
-    {"note": "Some say it is immortal...", "category": "weapon"},
+CARD_VALUES = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
+
+FIRST_NAMES = ["Agnes", "Bartholomew", "Catherine", "William", "Thomas", "Isolde"]
+SURNAMES = ["Aldworth", "Bentham", "Clarke", "Gibbes", "Milward", "Huxham"]
+
+RUMOR_METHODS = [
+    {"label": "Witnessed it", "phrase": "claims to have witnessed the Beast and shares:"},
+    {"label": "Mysterious note", "phrase": "reveals a mysterious note that reads:"},
+    {"label": "Read in a book", "phrase": "recites from an old tome:"},
+    {"label": "Found an artifact", "phrase": "describes an artifact that implies:"},
+    {"label": "Heard rumor", "phrase": "whispers that:"},
+    {"label": "Had a dream", "phrase": "describes a chilling dream:"},
 ]
+
+SUIT_DETAILS = {
+    "hearts": {
+        "category": "ward",
+        "formatter": lambda detail: f"The Beast's appearance: {detail}.",
+        "details": {
+            "2": "Large, sparkling eyes",
+            "3": "Body covered in thick fur",
+            "4": "Grunting pig snout",
+            "5": "Foul odor of rotting fish",
+            "6": "Head like a goat",
+            "7": "Massive antlers of a stag",
+            "8": "Runs on all fours like a dog",
+            "9": "Powerful, barbed tail",
+            "10": "Giant bat wings",
+            "J": "Long hands with sharp claws",
+            "Q": "Tendrils that whip and lash",
+            "K": "Jaws larger than a lion's",
+            "A": "Feet with talons like an eagle",
+        },
+    },
+    "diamonds": {
+        "category": "weapon",
+        "formatter": lambda detail: f"The Beast's behavior: {detail}.",
+        "details": {
+            "2": "Stealthy",
+            "3": "Blasphemous",
+            "4": "Lycanthropic",
+            "5": "Erratic",
+            "6": "Howling",
+            "7": "Nocturnal",
+            "8": "Vicious",
+            "9": "Furtive",
+            "10": "Shapeshifting",
+            "J": "Predatory",
+            "Q": "Stalking",
+            "K": "Hidden",
+            "A": "Invisible",
+        },
+    },
+    "spades": {
+        "category": "ward",
+        "formatter": lambda detail: f"Ward against the Beast: {detail}.",
+        "details": {
+            "2": "Rosemary & sage",
+            "3": "Silver mirror",
+            "4": "Bell made of lead",
+            "5": "Black salt",
+            "6": "String of acorns",
+            "7": "Running water",
+            "8": "Iron horseshoe",
+            "9": "Golden amulet",
+            "10": "Criminal's hand",
+            "J": "Wolf bones",
+            "Q": "Chalked circle",
+            "K": "Glass witch ball",
+            "A": "Relic of a saint",
+        },
+    },
+    "clubs": {
+        "category": "weapon",
+        "formatter": lambda detail: f"Weapon or tactic against the Beast: {detail}.",
+        "details": {
+            "2": "Bladed",
+            "3": "Cold iron",
+            "4": "Lead shot",
+            "5": "Piercing",
+            "6": "View with mirror",
+            "7": "Rowan tree wood",
+            "8": "Douse with water",
+            "9": "Fire",
+            "10": "Bludgeoning",
+            "J": "Snare trap",
+            "Q": "Direct sunlight",
+            "K": "Ancient sword",
+            "A": "Loud clanging",
+        },
+    },
+}
 
 class GameEngine:
     def __init__(self, beast_name: str, inquisitor_name: str, seed: Optional[int] = None):
@@ -149,6 +230,39 @@ class GameEngine:
         
         # Execute initial beast approaches phase
         self._execute_beast_approaches_phase()
+    
+    def _generate_rumor(self) -> Rumor:
+        """Create a dynamically generated rumor following the card-based structure."""
+        existing_notes = {rumor["note"] for rumor in self.game_data.investigation["rumors"]}
+        attempts = 0
+        note = ""
+        category = "appearance"
+        suit_keys = list(SUIT_DETAILS.keys())
+
+        while attempts < 10:
+            first_name = random.choice(FIRST_NAMES)
+            surname = random.choice(SURNAMES)
+            method = random.choice(RUMOR_METHODS)
+            suit_key = random.choice(suit_keys)
+            card_value = random.choice(CARD_VALUES)
+            suit_config = SUIT_DETAILS[suit_key]
+            detail = suit_config["details"].get(card_value, suit_config["details"]["2"])
+            detail_sentence = suit_config["formatter"](detail)
+
+            note = f\"{first_name} {surname} ({method['label']}) {method['phrase']} {detail_sentence}\"
+            category = suit_config["category"]
+
+            if note not in existing_notes:
+                break
+
+            attempts += 1
+
+        return Rumor(
+            id=str(int(datetime.now().timestamp() * 1000)),
+            location=self.game_data.player_location,
+            note=note,
+            category=category
+        )
     
     def _add_to_log(self, message: str):
         """Add a message to the game log"""
@@ -337,22 +451,13 @@ class GameEngine:
         # Get location name
         location_name = next((loc.name for loc in LOCATIONS if loc.id == self.game_data.player_location), "Unknown")
         
-        # Generate new rumor ensuring uniqueness until all rumors are used
-        existing_notes = {rumor["note"] for rumor in self.game_data.investigation["rumors"]}
-        available_rumors = [rumor for rumor in RUMORS if rumor["note"] not in existing_notes]
-        selected_rumor = random.choice(available_rumors or RUMORS)
-        new_rumor = Rumor(
-            id=str(int(datetime.now().timestamp() * 1000)),
-            location=self.game_data.player_location,
-            note=selected_rumor["note"],
-            category=selected_rumor["category"]
-        )
+        new_rumor = self._generate_rumor()
         
         # Add to investigation
         self.game_data.investigation["rumors"].append(asdict(new_rumor))
         
         self._add_to_log(
-            f"{self.game_data.inquisitor_name} investigates at {location_name} (Location {self.game_data.player_location}) and uncovers a rumor: \"{selected_rumor['note']}\""
+            f"{self.game_data.inquisitor_name} investigates at {location_name} (Location {self.game_data.player_location}) and uncovers a rumor: \"{new_rumor.note}\""
         )
         
         return {

@@ -1,0 +1,17 @@
+{
+  "activeProfileId": "mhu6bnzl",
+  "profiles": [
+    {
+      "id": "mhu6bnzl",
+      "inquisitor_name": "John Beastslayer",
+      "created_at": "2025-11-11T06:11:57.105Z",
+      "updated_at": "2025-11-11T06:14:35.063Z",
+      "stats": {
+        "games_played": 1,
+        "victories": 1,
+        "defeats": 0,
+        "win_rate": 100
+      }
+    }
+  ]
+}

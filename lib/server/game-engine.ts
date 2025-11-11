@@ -106,13 +106,13 @@ export const LOCATIONS: Location[] = [
 
 export const LOCATION_CONNECTIONS: Record<string, string[]> = {
   I: ['II', 'III'],
-  II: ['I', 'IV', 'V'],
+  II: ['I', 'IV'],
   III: ['I', 'IV'],
-  IV: ['II', 'III', 'V', 'VI'],
-  V: ['II', 'IV', 'VII', 'VIII'],
-  VI: ['IV', 'VIII'],
+  IV: ['II', 'III', 'V'],
+  V: ['IV', 'VI', 'VIII', 'VII'],
+  VI: ['V'],
   VII: ['V', 'VIII'],
-  VIII: ['V', 'VI', 'VII'],
+  VIII: ['V', 'VII'],
 }
 
 const RUMOR_POOL: RumorDefinition[] = [
@@ -227,9 +227,8 @@ export class GameEngine {
 
     if (this.gameData.beast_location === targetLocation) {
       this.addToLog(
-        `SURPRISE! ${this.gameData.beast_name} is here at ${locationName} (Location ${targetLocation})! A hunt is triggered!`,
+        `Caution! ${this.gameData.beast_name} is present at ${locationName} (Location ${targetLocation}). Prepare to hunt.`,
       )
-      this.gamePhase = GamePhase.HUNT
     }
 
     return this.createGameStateResponse(`Moved to ${locationName}`)
@@ -481,6 +480,24 @@ export class GameEngine {
     )
 
     this.executeBeastApproachesPhase()
+
+    const beastHere =
+      this.gameData.beast_location && this.gameData.beast_location === this.gameData.player_location
+    if (this.gamePhase !== GamePhase.HUNT && beastHere) {
+      const locationName = this.findLocationName(this.gameData.player_location)
+      this.addToLog(
+        `SURPRISE! ${this.gameData.beast_name} is here with you at ${locationName} (Location ${this.gameData.player_location})! A hunt is triggered!`,
+      )
+      this.gamePhase = GamePhase.HUNT
+
+      return {
+        success: true,
+        message: 'The Beast is upon you! A hunt is triggered!',
+        game_data: this.getSerializableGameData(),
+        game_log: [...this.gameLog],
+      }
+    }
+
     if (this.gamePhase !== GamePhase.HUNT) {
       this.gamePhase = GamePhase.TAKE_ACTIONS
     }

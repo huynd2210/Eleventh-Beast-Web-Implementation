@@ -91,14 +91,14 @@ LOCATIONS = [
 
 # Location connections based on white line connections in map
 LOCATION_CONNECTIONS = {
-    "I": ["II", "III"],      # Royal Exchange connects to All-Hallows and Billingsgate
-    "II": ["I", "IV", "V"],   # All-Hallows connects to Royal Exchange, London Bridge, St. Thomas
-    "III": ["I", "IV"],       # Billingsgate connects to Royal Exchange, London Bridge
-    "IV": ["II", "III", "V", "VI"], # London Bridge central hub
-    "V": ["II", "IV", "VII", "VIII"], # St. Thomas' Hospital
-    "VI": ["IV", "VIII"],     # Coxes Wharf
-    "VII": ["V", "VIII"],     # Marshalsea Prison
-    "VIII": ["V", "VI", "VII"], # Burying Ground
+    "I": ["II", "III"],
+    "II": ["I", "IV"],
+    "III": ["I", "IV"],
+    "IV": ["II", "III", "V"],
+    "V": ["IV", "VI", "VIII", "VII"],
+    "VI": ["V"],
+    "VII": ["V", "VIII"],
+    "VIII": ["V", "VII"],
 }
 
 # Rumors pool for investigation (with categories)
@@ -302,12 +302,11 @@ class GameEngine:
         
         self._add_to_log(f"{self.game_data.inquisitor_name} moves to {location_name} (Location {target_location}).")
         
-        # Check for surprise hunt
+        # Inform if beast present at destination
         if self.game_data.beast_location == target_location:
             self._add_to_log(
-                f"SURPRISE! {self.game_data.beast_name} is here at {location_name} (Location {target_location})! A hunt is triggered!"
+                f"Caution! {self.game_data.beast_name} is present at {location_name} (Location {target_location}). Prepare to hunt."
             )
-            self.game_phase = GamePhase.HUNT
         
         return {
             "success": True,
@@ -545,6 +544,19 @@ class GameEngine:
         
         # Execute beast approaches phase for new round
         self._execute_beast_approaches_phase()
+        
+        if self.game_phase != GamePhase.HUNT and self.game_data.beast_location == self.game_data.player_location:
+            location_name = next((loc.name for loc in LOCATIONS if loc.id == self.game_data.player_location), "Unknown")
+            self._add_to_log(
+                f"SURPRISE! {self.game_data.beast_name} is here with you at {location_name} (Location {self.game_data.player_location})! A hunt is triggered!"
+            )
+            self.game_phase = GamePhase.HUNT
+            return {
+                "success": True,
+                "message": "The Beast is upon you! A hunt is triggered!",
+                "game_data": self._get_serializable_game_data(),
+                "game_log": self.game_log
+            }
         
         # Auto-transition to actions phase
         self.game_phase = GamePhase.TAKE_ACTIONS

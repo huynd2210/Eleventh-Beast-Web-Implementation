@@ -1,6 +1,5 @@
 "use client"
 import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 
 // Define the 8 locations from the map image
 export const LOCATIONS = [
@@ -16,14 +15,14 @@ export const LOCATIONS = [
 
 // Graph connections based on your map image
 export const LOCATION_CONNECTIONS: Record<string, string[]> = {
-  I: ["II", "III"], // Royal Exchange connects to All-Hallows and Billingsgate
-  II: ["I", "IV", "V"], // All-Hallows connects to Royal Exchange, London Bridge, St. Thomas
-  III: ["I", "IV"], // Billingsgate connects to Royal Exchange, London Bridge
-  IV: ["II", "III", "V", "VI"], // London Bridge central hub
-  V: ["II", "IV", "VII", "VIII"], // St. Thomas' Hospital
-  VI: ["IV", "VIII"], // Coxes Wharf
-  VII: ["V", "VIII"], // Marshalsea Prison
-  VIII: ["V", "VI", "VII"], // Burying Ground
+  I: ["II", "III"],
+  II: ["I", "IV"],
+  III: ["I", "IV"],
+  IV: ["II", "III", "V"],
+  V: ["IV", "VI", "VIII", "VII"],
+  VI: ["V"],
+  VII: ["V", "VIII"],
+  VIII: ["V", "VII"],
 }
 
 interface LondonMapProps {
@@ -63,6 +62,8 @@ export function LondonMap({
     const targetLocation = locations.find((l: any) => l.id === targetLocationId)
     if (!targetLocation) return
 
+    if (!canMove || actionsRemaining <= 0) return
+
     // Use the onPlayerMove callback to handle the move via API
     if (onPlayerMove) {
       await onPlayerMove(targetLocationId)
@@ -86,7 +87,7 @@ export function LondonMap({
 
         {/* Interactive Map - SVG Graph Visualization */}
         <div className="bg-slate-800/30 border border-amber-900/30 rounded p-6 overflow-x-auto">
-          <svg width="100%" height="400" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+          <svg width="100%" height="420" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
             {/* Draw connection lines */}
             {Object.entries(locationConnections).map(([fromId, toIds]) => {
               const fromLoc = locations.find((l: any) => l.id === fromId)
@@ -114,17 +115,30 @@ export function LondonMap({
               const isBeast = loc.id === beastLocation
               const hasRumorToken = rumorsTokens[loc.id]
               const isConnected = connectedLocations.includes(loc.id)
+              const canSelect =
+                canMove && actionsRemaining > 0 && isConnected && loc.id !== playerLocation
 
               return (
-                <g key={loc.id}>
-                  {/* Node circle */}
+                <g
+                  key={loc.id}
+                  className={canSelect ? "cursor-pointer transition-opacity hover:opacity-85" : ""}
+                  onClick={() => {
+                    if (canSelect) {
+                      handleMoveAction(loc.id)
+                    }
+                  }}
+                  role={canSelect ? "button" : undefined}
+                  aria-label={canSelect ? `Move to ${loc.name}` : undefined}
+                >
                   <circle
                     cx={loc.x}
                     cy={loc.y}
                     r="4"
-                    fill={isBeast ? "#dc2626" : isPlayer ? "#b45309" : "#1e293b"}
-                    stroke={isBeast ? "#991b1b" : isPlayer ? "#78350f" : "#334155"}
-                    strokeWidth="1"
+                    fill={isBeast ? "#dc2626" : isPlayer ? "#b45309" : canSelect ? "#d97706" : "#1e293b"}
+                    stroke={isBeast ? "#991b1b" : isPlayer ? "#78350f" : canSelect ? "#d1a054" : "#334155"}
+                    strokeWidth={canSelect ? "1.5" : "1"}
+                    filter={canSelect ? "drop-shadow(0px 0px 1px rgba(209,160,84,0.25))" : undefined}
+                    opacity={canSelect || isPlayer || isBeast ? 0.95 : 0.8}
                   />
 
                   {hasRumorToken && (
@@ -133,8 +147,15 @@ export function LondonMap({
                     </g>
                   )}
 
-                  {/* Location label */}
-                  <text x={loc.x} y={loc.y - 6} fontSize="4" textAnchor="middle" fill="#d4af37" fontWeight="bold">
+                  <text
+                    x={loc.x}
+                    y={loc.y - 6}
+                    fontSize="4"
+                    textAnchor="middle"
+                    fill="#d4af37"
+                    fontWeight="bold"
+                    style={{ pointerEvents: "none", userSelect: "none" }}
+                  >
                     {loc.id}
                   </text>
                 </g>
@@ -161,40 +182,18 @@ export function LondonMap({
           )}
         </div>
 
-        {/* Movement Options */}
-        {canMove && connectedLocations.length > 0 && (
-          <div>
-            <p className="text-amber-200/60 text-xs uppercase tracking-widest mb-3">Move To (Action)</p>
-            {actionsRemaining > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {connectedLocations.map((locId) => {
-                  const loc = locations.find((l: any) => l.id === locId)
-                  if (!loc) return null
-                  return (
-                    <Button
-                      key={locId}
-                      onClick={() => handleMoveAction(locId)}
-                      variant="outline"
-                      className="text-xs border-amber-900/50 text-amber-100 hover:bg-amber-800 hover:border-amber-600 hover:text-amber-50"
-                    >
-                      {loc.id} - {loc.name.split(" ").slice(0, 2).join(" ")}
-                    </Button>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="p-3 bg-red-950/20 border border-red-900/30 rounded">
-                <p className="text-red-200/60 text-xs">No actions remaining for movement</p>
-                <p className="text-red-200/40 text-xs mt-1">The day will end automatically...</p>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Legend */}
-        <div className="bg-slate-800/20 border border-amber-900/20 rounded p-3 text-xs text-amber-200/60">
-          <p className="font-semibold text-amber-200 mb-2">Map Legend:</p>
-          <p>🟡 Your location • 🔴 Beast location • 🟣 Rumor token • Lines represent paths between locations</p>
+        <div className="bg-slate-800/20 border border-amber-900/20 rounded p-3 text-xs text-amber-200/60 space-y-2">
+          <p className="font-semibold text-amber-200">Map Legend:</p>
+          <p>🟡 Your location • 🔴 Beast location • 🟣 Rumor token • Lines represent routes</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+            {locations.map((loc: any) => (
+              <div key={loc.id} className="flex items-center gap-2 text-amber-200/70">
+                <span className="font-mono text-amber-100">{loc.id}</span>
+                <span>{loc.name}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </Card>

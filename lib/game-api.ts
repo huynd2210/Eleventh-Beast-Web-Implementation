@@ -83,17 +83,20 @@ class GameAPI {
         ...options,
       })
 
+      const data = await response.json().catch(() => null)
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => null)
-        const detail =
-          (errorData as { message?: string; detail?: string } | null)?.message ??
-          (errorData as { message?: string; detail?: string } | null)?.detail
-        throw new Error(detail || `HTTP ${response.status}: ${response.statusText}`)
+        const errorData = (data as { success?: boolean; message?: string; detail?: string } | null) ?? {}
+        const detail = errorData.message ?? errorData.detail ?? `HTTP ${response.status}: ${response.statusText}`
+        return {
+          ...errorData,
+          success: errorData.success ?? false,
+          message: detail,
+        } as T
       }
 
-      return await response.json()
+      return data as T
     } catch (error) {
-      console.error(`API request failed: ${endpoint}`, error)
       throw error
     }
   }

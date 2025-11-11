@@ -15,6 +15,7 @@ interface ActionsPanelProps {
   onHuntTriggered: () => void
   actionsRemaining: number
   onCompleteAction: () => void
+  onSessionExpired: (message?: string) => void
 }
 
 export function ActionsPanel({
@@ -26,6 +27,7 @@ export function ActionsPanel({
   onHuntTriggered,
   actionsRemaining,
   onCompleteAction,
+  onSessionExpired,
 }: ActionsPanelProps) {
   const [selectedTab, setSelectedTab] = useState("investigate")
   const [isLoading, setIsLoading] = useState(false)
@@ -83,7 +85,12 @@ export function ActionsPanel({
         setError(response.message || "Investigation failed")
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to investigate")
+      const message = err instanceof Error ? err.message : "Failed to investigate"
+      if (message.toLowerCase().includes("session not found")) {
+        onSessionExpired(message)
+      } else {
+        setError(message)
+      }
     } finally {
       setIsLoading(false)
     }
@@ -115,7 +122,12 @@ export function ActionsPanel({
         setError(response.message || "Verification failed")
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to verify rumors")
+      const message = err instanceof Error ? err.message : "Failed to verify rumors"
+      if (message.toLowerCase().includes("session not found")) {
+        onSessionExpired(message)
+      } else {
+        setError(message)
+      }
     } finally {
       setIsLoading(false)
     }
@@ -155,7 +167,12 @@ export function ActionsPanel({
         setError(response.message || "Hunt failed")
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to hunt beast")
+      const message = err instanceof Error ? err.message : "Failed to hunt beast"
+      if (message.toLowerCase().includes("session not found")) {
+        onSessionExpired(message)
+      } else {
+        setError(message)
+      }
     } finally {
       setIsLoading(false)
     }

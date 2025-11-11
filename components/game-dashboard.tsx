@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { GameLog } from "./game-log"
-import { LondonMap } from "./london-map"
+import { LondonMap, LOCATIONS as DEFAULT_LOCATIONS, LOCATION_CONNECTIONS as DEFAULT_LOCATION_CONNECTIONS } from "./london-map"
 import { ActionsPanel } from "./actions-panel"
 import { gameAPI } from "@/lib/game-api"
+import { InquisitorProfile } from "@/types/profile"
 
 interface GameData {
   beast_name: string
@@ -17,8 +18,16 @@ interface GameData {
   current_year: number
   player_location: string
   investigation: {
-    rumors: Array<{ id: string; location: string; note: string; verified: boolean }>
-    secrets: Array<{ id: string; secret: string }>
+    rumors: Array<{
+      id: string
+      location: string
+      note: string
+      verified: boolean
+      category?: "ward" | "weapon"
+      is_false?: boolean
+      is_learned?: boolean
+    }>
+    secrets: Array<{ id: string; secret: string; category?: "ward" | "weapon" }>
     notes: Array<{ id: string; note: string }>
   }
   wards: Array<{ id: string; name: string }>
@@ -47,19 +56,84 @@ interface GameDashboardProps {
   setGameData: (data: any) => void
   gameLog?: Array<{ id: string; message: string; timestamp: number }>
   setGameLog?: (log: Array<{ id: string; message: string; timestamp: number }>) => void
+  onSessionExpired: () => void
+  onPlayAgain: () => void
+  onChangeProfile: () => void
+  profile: InquisitorProfile | null
+  onProfileUpdated: (profile: InquisitorProfile) => void
 }
 
-export function GameDashboard({ gameData, setGameData, gameLog = [], setGameLog }: GameDashboardProps) {
+export function GameDashboard({
+  gameData,
+  setGameData,
+  gameLog = [],
+  setGameLog,
+  onSessionExpired,
+  onPlayAgain,
+  onChangeProfile,
+  profile,
+  onProfileUpdated,
+}: GameDashboardProps) {
   const [selectedTab, setSelectedTab] = useState("overview")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [locations, setLocations] = useState<any[]>([])
-  const [locationConnections, setLocationConnections] = useState<Record<string, string[]>>({})
+  const [locations, setLocations] = useState<any[]>(DEFAULT_LOCATIONS)
+  const [locationConnections, setLocationConnections] = useState<Record<string, string[]>>(DEFAULT_LOCATION_CONNECTIONS)
+  const [profileStats, setProfileStats] = useState(profile?.stats ?? null)
+  const outcomeRecordedRef = useRef(false)
 
   useEffect(() => {
-    loadGameData()
-    loadLocations()
-  }, [gameData.session_id])
+    setProfileStats(profile?.stats ?? null)
+  }, [profile])
+
+  useEffect(() => {
+    if (!profile) {
+      outcomeRecordedRef.current = false
+      return
+    }
+
+    if (gameData.game_ended) {
+      if (!outcomeRecordedRef.current) {
+        const result = gameData.victorious ? "victory" : "defeat"
+        ;(async () => {
+          try {
+            const response = await fetch("/api/profile", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ profileId: profile.id, result }),
+            })
+            if (response.ok) {
+              const data = await response.json()
+              if (data?.profile) {
+                const updated = data.profile as InquisitorProfile
+                onProfileUpdated(updated)
+                setProfileStats(updated.stats)
+              }
+            }
+          } catch (err) {
+            console.error("Failed to record profile outcome", err)
+          }
+        })()
+        outcomeRecordedRef.current = true
+      }
+    } else {
+      outcomeRecordedRef.current = false
+    }
+  }, [gameData.game_ended, gameData.victorious, profile, onProfileUpdated])
+
+  const handleSessionExpired = (message?: string) => {
+    setError(message ?? "Game session expired. Please start a new hunt.")
+    onSessionExpired()
+  }
+
+  const handleApiError = (err: unknown, fallbackMessage: string) => {
+    const message = err instanceof Error ? err.message : fallbackMessage
+    if (message.toLowerCase().includes("session not found")) {
+      handleSessionExpired(message)
+      return
+    }
+    setError(message)
+  }
 
   const loadGameData = async () => {
     if (!gameData.session_id) return
@@ -73,9 +147,11 @@ export function GameDashboard({ gameData, setGameData, gameLog = [], setGameLog 
         if (setGameLog && response.game_log) {
           setGameLog(response.game_log)
         }
+      } else if (!response.success) {
+        handleApiError(new Error(response.message || "Failed to load game data"), "Failed to load game data")
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load game data")
+      handleApiError(err, "Failed to load game data")
     } finally {
       setIsLoading(false)
     }
@@ -117,10 +193,10 @@ export function GameDashboard({ gameData, setGameData, gameLog = [], setGameLog 
           setGameLog(response.game_log)
         }
       } else {
-        setError(response.message || "Failed to move player")
+        handleApiError(new Error(response.message || "Failed to move player"), "Failed to move player")
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to move player")
+      handleApiError(err, "Failed to move player")
     } finally {
       setIsLoading(false)
     }
@@ -138,9 +214,11 @@ export function GameDashboard({ gameData, setGameData, gameLog = [], setGameLog 
         if (setGameLog && response.game_log) {
           setGameLog(response.game_log)
         }
+      } else if (!response.success) {
+        handleApiError(new Error(response.message || "Failed to complete action"), "Failed to complete action")
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to complete action")
+      handleApiError(err, "Failed to complete action")
     } finally {
       setIsLoading(false)
     }
@@ -181,13 +259,48 @@ export function GameDashboard({ gameData, setGameData, gameLog = [], setGameLog 
   const currentLocationName = locations.find((l) => l.id === gameData.player_location)?.name || "Unknown"
 
   if (gameData.game_ended) {
-    const handleReplay = () => {
-      window.location.href = "/"
-    }
-
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 p-4 md:p-8 flex items-center justify-center">
-        <Card className="max-w-2xl border-amber-900/50 bg-slate-900/50 backdrop-blur p-8 md:p-12">
+        <Card className="max-w-2xl border-amber-900/50 bg-slate-900/50 backdrop-blur p-8 md:p-12 space-y-6">
+          {profile && (
+            <div className="bg-slate-800/30 border border-amber-900/40 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-amber-200/60">Inquisitor</p>
+                  <p className="text-amber-100 font-semibold text-sm">{profile.inquisitor_name}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onChangeProfile}
+                  className="border-amber-900/50 text-amber-100 hover:bg-amber-900/20"
+                >
+                  Change Profile
+                </Button>
+              </div>
+              {profileStats && (
+                <div className="grid grid-cols-2 gap-3 mt-4 text-sm text-amber-200/70">
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-amber-200/50">Games Played</p>
+                    <p className="text-amber-100 font-semibold">{profileStats.games_played}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-amber-200/50">Win Rate</p>
+                    <p className="text-amber-100 font-semibold">{profileStats.win_rate}%</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-amber-200/50">Victories</p>
+                    <p className="text-amber-100 font-semibold">{profileStats.victories}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-amber-200/50">Defeats</p>
+                    <p className="text-amber-100 font-semibold">{profileStats.defeats}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {gameData.victorious ? (
             <>
               <h1 className="text-5xl md:text-6xl font-bold text-green-100 mb-4 tracking-wider text-center">VICTORY</h1>
@@ -250,10 +363,10 @@ export function GameDashboard({ gameData, setGameData, gameLog = [], setGameLog 
             </>
           )}
 
-          <div className="flex justify-center">
+          <div className="flex flex-col sm:flex-row justify-center gap-3 mt-6">
             <Button
-              onClick={handleReplay}
-              className="mt-4 bg-amber-900 hover:bg-amber-800 text-amber-50 font-semibold px-6 py-3"
+              onClick={onPlayAgain}
+              className="bg-amber-900 hover:bg-amber-800 text-amber-50 font-semibold px-6 py-3"
             >
               Play Again
             </Button>
@@ -347,7 +460,7 @@ export function GameDashboard({ gameData, setGameData, gameLog = [], setGameLog 
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="mt-6 space-y-6">
+        <TabsContent value="overview" className="mt-6 space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
               <div className="space-y-6">
                 {gameData.game_phase === "beast-approaches" && (
@@ -369,6 +482,7 @@ export function GameDashboard({ gameData, setGameData, gameLog = [], setGameLog 
                     onHuntTriggered={handleHuntTriggered}
                     onCompleteAction={completeAction}
                     actionsRemaining={gameData.actions_remaining}
+                    onSessionExpired={handleSessionExpired}
                   />
                 )}
 
